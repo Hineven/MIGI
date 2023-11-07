@@ -2,6 +2,8 @@
 
 #include "MIGILogCategory.h"
 
+// Include this to get the windows.h to be minimum.
+#include "Windows/MinWindows.h"
 #include "vulkan/vulkan.h"
 #include "IVulkanDynamicRHI.h"
 
@@ -28,6 +30,7 @@ bool FMIGISyncUtilsVulkan::InstallRHIConfigurations()
 			}
 		}
 	);
+	// Oops
 	return true;
 }
 
@@ -53,11 +56,11 @@ FMIGISyncUtilsVulkan::~FMIGISyncUtilsVulkan()
 
 void FMIGISyncUtilsVulkan::SynchronizeFromCUDA(FRHICommandListImmediate& RHICmdList)
 {
-	IMIGISyncUtils::SynchronizeFromCUDA(RHICmdList);
+	// TODO
 }
 
 
 void FMIGISyncUtilsVulkan::SynchronizeToCUDA(FRHICommandListImmediate& RHICmdList)
 {
-	IMIGISyncUtils::SynchronizeToCUDA(RHICmdList);
+	// TODO
 }

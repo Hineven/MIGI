@@ -1,14 +1,11 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
-
 #include "MIGIModule.h"
-
-// We need to do direct interaction with vulkan.
-#include "vulkan/vulkan.h"
 
 #include "MIGIDiffuseIndirect.h"
 #include "MIGILogCategory.h"
 #include "MIGISyncUtils.h"
-#include "Runtime/VulkanRHI/Public/IVulkanDynamicRHI.h"
+
+// Include MinWindows.h?
+#include "IVulkanDynamicRHI.h"
 
 
 
@@ -42,7 +39,7 @@ void FMIGIModule::StartupModule()
 			InitializeMIGI();
 		}
 	);
-
+	// oops
 }
 
 void FMIGIModule::InitializeMIGI()

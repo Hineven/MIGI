@@ -3,14 +3,14 @@
 	"Version": 1,
 	"VersionName": "0.1",
 	"FriendlyName": "MIGI",
-	"Description": "Experimental GI on neural radiance cache for dynamic scenes.",
+	"Description": "Experimental GI with neural radiance cache for dynamic scenes.",
 	"Category": "Renderer",
 	"CreatedBy": "Hineven",
 	"CreatedByURL": "https://hineven.site",
 	"DocsURL": "",
 	"MarketplaceURL": "",
 	"SupportURL": "",
-	"CanContainContent": false,
+	"CanContainContent": true,
 	"IsBetaVersion": true,
 	"IsExperimentalVersion": true,
 	"Installed": false,
@@ -18,7 +18,7 @@
 		{
 			"Name": "MIGI",
 			"Type": "Runtime",
-			"LoadingPhase": "EarliestPossible"
+			"LoadingPhase": "PreEarlyLoadingScreen"
 		}
 	]
 }
