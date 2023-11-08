@@ -2,9 +2,11 @@
 #ifndef MIGI_SYNC_UTILS_VULKAN_H
 #define MIGI_SYNC_UTILS_VULKAN_H
 #include "CoreMinimal.h"
-#include "MIGISyncUtils.h"
+#include "..\MIGISyncAdapter.h"
 
-class FMIGISyncUtilsVulkan : public IMIGISyncUtils
+// Vulkan has extremely poor performance on Windows & UE5 due to poor adaption.
+// So don't use this if possible.
+class FMIGISyncUtilsVulkan : public IMIGISyncAdapter
 {
 public:
 	virtual bool InstallRHIConfigurations() override;
@@ -14,5 +16,7 @@ public:
 private:
 	virtual bool TryActivate() override;
 	FDelegateHandle RHIExtensionRegistrationDelegateHandle;
+	// Prevent multiple extension requests.
+	bool bExtensionsRequested {};
 };
 #endif // MIGI_SYNC_UTILS_VULKAN_H

@@ -8,13 +8,18 @@ class FMIGIModule : public IModuleInterface
 public:
 	virtual void StartupModule () override;
 	virtual void ShutdownModule () override;
+	bool isActive () const;
 	
 	static inline FMIGIModule& Get()
 	{
 		return FModuleManager::LoadModuleChecked< FMIGIModule >("MIGI");
 	}
 	
-	void InitializeMIGI ();
+	size_t GetSharedBufferSize () const ;
+	
 protected:
-	bool bModuleFunctional {false};
+	void InitializeMIGI ();
+	
+	bool bModuleActive {false};
+	FDelegateHandle DiffuseIndirectDelegateHandle {};
 };

@@ -4,11 +4,11 @@
 #define MIGI_SYNC_UTILS_H
 #include "CoreMinimal.h"
 
-class IMIGISyncUtils
+class IMIGISyncAdapter
 {
 public:
 	static void InstallForAllRHIs () ;
-	static IMIGISyncUtils * GetInstance ();
+	static IMIGISyncAdapter * GetInstance ();
 	// Called when the module shuts down.
 	static void Clear ();
 	// Modify RHI configurations to allow fine-grained CUDA synchronization.
@@ -19,10 +19,10 @@ public:
 	// Insert a semaphore to wait for (on GPU) for the succeeding commands.
 	virtual void SynchronizeFromCUDA (FRHICommandListImmediate & RHICmdList) = 0;
 
-	virtual ~IMIGISyncUtils () = default;
+	virtual ~IMIGISyncAdapter () = default;
 protected:
 	// Activate the RHI-CUDA synchronization utility object for the active RHI. Return true if successful.
 	virtual bool TryActivate () = 0;
-	IMIGISyncUtils () = default;
+	IMIGISyncAdapter () = default;
 };
 #endif // MIGI_SYNC_UTILS_H

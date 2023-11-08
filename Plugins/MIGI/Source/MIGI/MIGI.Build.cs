@@ -13,13 +13,6 @@ public class MIGI : ModuleRules
 		
 		IncludeOrderVersion = EngineIncludeOrderVersion.Latest;
 		
-		PublicIncludePaths.AddRange(
-			new string[] {
-				// ... add public include paths required here ...
-			}
-			);
-				
-		
 	    // Solution from https://forums.unrealengine.com/t/how-to-include-private-header-files-of-other-modules-into-my-module/325438/2
 		string EnginePath = Path.GetFullPath(Target.RelativeEnginePath);
 		// Now get the base of UE's modules dir (could also be Developer, Editor, ThirdParty)
@@ -28,12 +21,12 @@ public class MIGI : ModuleRules
     
 		// We need this to tightly couple our module with the renderer
 		PrivateIncludePaths.Add(EngineRuntimeModulesSourceDirectoryPath + "Renderer/Private");
-		// As well as headers of the vulkan RHI. We need low level access to the vulkan API in order to synchronize with CUDA.
+		// As well as headers of some RHIs. We need low level access to them in order to synchronize with CUDA.
 		PrivateIncludePaths.Add(EngineRuntimeModulesSourceDirectoryPath + "VulkanRHI/Private");
+		PrivateIncludePaths.Add(EngineRuntimeModulesSourceDirectoryPath + "D3D12RHI/Private");
 		// The generic Vulkan headers are also needed.
 		// (Deep invasive programming is required to do better synchronization with CUDA other than spin-locks.)
 		PrivateIncludePaths.Add(EngineThirdpartyModulesSourceDirectoryPath + "Vulkan/Include");
-		// D3D is not supported by MIGI currently (as the maintainer doesn't have that ability).
 		
 		PublicDependencyModuleNames.AddRange(
 			new string[]
@@ -56,10 +49,11 @@ public class MIGI : ModuleRules
 				"RenderCore",
 				// We need to statically link with the renderer.
 				"Renderer",
-				// Also, RHI abstraction layer. 
+				// RHI and its implementations
 				"RHI",
-				// Specifically the Vulkan RHI
-				"VulkanRHI", "Vulkan"
+				"VulkanRHI", "Vulkan", "D3D12RHI",
+				// CUDA
+				"CUDA"
 			}
 		);
 		
