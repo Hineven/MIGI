@@ -2,7 +2,7 @@
 
 #include "MIGIDiffuseIndirect.h"
 #include "MIGILogCategory.h"
-#include "MIGISyncAdapter.h"
+#include "MIGICUDAAdapter.h"
 
 #include "CudaModule.h"
 
@@ -19,44 +19,74 @@ void FMIGIModule::StartupModule()
 	check(GDynamicRHI == nullptr);
 
 	// Initialize and check for RHI-CUDA synchronization support.
-	IMIGISyncAdapter::Clear();
-	IMIGISyncAdapter::InstallForAllRHIs();
+	IMIGICUDAAdapter::Clear();
+	IMIGICUDAAdapter::InstallForAllRHIs();
 
-	// Check for CUDA availability in later stages.
-	// Also, try to activate RHI sync utils after RHI initialization.
+	// Try to activate RHI sync utils after RHI initialization.
 	FCoreDelegates::OnPostEngineInit.AddLambda(
 		[this]()
 		{
-			if(IMIGISyncAdapter::GetInstance() == nullptr)
+			if(IMIGICUDAAdapter::GetInstance() == nullptr)
 			{
 				UE_LOG(MIGI, Warning, TEXT("RHI-CUDA synchronization utilities are not available for current RHI."
 							   "MIGI will be unavaliable."));
-				bModuleActive = false;
-			} else bModuleActive = true;
-			if(bModuleActive)
+				bAdapterActive = false;
+			} else bAdapterActive = true;
+			if(bCUDAActive && bAdapterActive)
 			{
-				// Check for CUDA availability.
-				auto bCUDAModule = FModuleManager::Get().IsModuleLoaded("CUDA");
-				if(!bCUDAModule
-					|| !FModuleManager::GetModuleChecked<FCUDAModule>("CUDA").IsAvailable())
-				{
-					UE_LOG(MIGI, Warning, TEXT("CUDA is not available, MIGI will be unavaliable."));
-					bModuleActive = false;
-				} else bModuleActive = true;
-				
 				// Call the actual initialization function.
-				if(bModuleActive) InitializeMIGI();
+				InitializeMIGI();
 			}
 		}
 	);
+	FCoreDelegates::OnPostEngineInit.AddLambda([this]()
+	{
+		// Check for CUDA availability.
+		auto bCUDAModule = FModuleManager::Get().IsModuleLoaded("CUDA");
+		if(!bCUDAModule)
+		{
+			UE_LOG(MIGI, Warning, TEXT("CUDA is not available, MIGI will be unavaliable."));
+			bCUDAActive = false;
+		} else bCUDAActive = true;
+		auto CUDAModule = FModuleManager::GetModuleChecked<FCUDAModule>("CUDA");
+		// CUDA real initialization is done on PostEngineInit() phase, we don't know the actual loading order.
+		if(CUDAModule.IsAvailable())
+		{
+			bCUDAActive = true;
+		} else
+		{
+			// If not available, we register a delegate to check for CUDA availability later again.
+			CUDAModule.OnPostCUDAInit.AddLambda([this]()
+			{
+				auto CUDAModule = FModuleManager::GetModuleChecked<FCUDAModule>("CUDA");
+				if(CUDAModule.IsAvailable())
+				{
+					bCUDAActive = true;
+				} else
+				{
+					UE_LOG(MIGI, Warning, TEXT("CUDA is not available, MIGI will be unavaliable."));
+					bCUDAActive = false;
+				}
+			});
+		}
+	});
+
+	// Call the actual initialization function.
+	if(bModuleActive) InitializeMIGI();
+	
+	// Check for CUDA availability in later stages.
 	// oops
 }
 
 void FMIGIModule::InitializeMIGI()
 {
-	UE_LOG(MIGI, Display, TEXT("Initializing..."));
-	// Register some delegates
-	DiffuseIndirectDelegateHandle = FGlobalIlluminationPluginDelegates::RenderDiffuseIndirectLight().AddStatic(&MIGIRenderDiffuseIndirect);
+	if(!bModuleActive)
+	{
+		UE_LOG(MIGI, Display, TEXT("Initializing..."));
+		// Register some delegates
+		DiffuseIndirectDelegateHandle = FGlobalIlluminationPluginDelegates::RenderDiffuseIndirectLight().AddStatic(&MIGIRenderDiffuseIndirect);
+		bModuleActive = true;
+	}
 }
 
 
@@ -72,7 +102,7 @@ void FMIGIModule::ShutdownModule()
 	DiffuseIndirectDelegateHandle.Reset();
 
 	// Clear adapters
-	IMIGISyncAdapter::Clear();
+	IMIGICUDAAdapter::Clear();
 
 }
 

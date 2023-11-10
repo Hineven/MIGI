@@ -1,18 +1,14 @@
-﻿#include "MIGISyncAdapterD3D12.h"
+﻿#include "MIGICUDAAdapterD3D12.h"
 
+#include "MIGILogCategory.h"
+#include "MIGIModule.h"
 #include "ID3D12DynamicRHI.h"
 #include "D3D12Resources.h"
-#include "MIGILogCategory.h"
 
-#include "CudaModule.h"
 #include "CudaWrapper.h"
 #include "D3D12RHIPrivate.h"
-#include "MIGIModule.h"
-#include "../../../../../../../UE_5.3/Engine/Plugins/Importers/USDImporter/Source/ThirdParty/USD/include/pxr/base/tf/refPtr.h"
 
-// #include "cuda_runtime.h"
-
-bool FMIGISyncUtilsD3D12::InstallRHIConfigurations()
+bool FMIGICUDAAdapterD3D12::InstallRHIConfigurations()
 {
 	// No need to install anything. Just check if the platform supports D3D
 #ifdef WIN32
@@ -22,7 +18,7 @@ bool FMIGISyncUtilsD3D12::InstallRHIConfigurations()
 #endif
 }
 
-class MIGISyncUtilsD3D12State
+class MIGICUDAAdapterD3D12State
 {
 public:
 
@@ -36,7 +32,11 @@ public:
 	//ID3D12Resource * SharedMemoryD3D12;
 	TRefCountPtr<FD3D12Buffer> SharedMemoryD3D12 {};
 
-	unsigned CurrentFenceValue {};
+	// The next shared fence value we're using. Incremented for one each time it's used.
+	uint64 CurrentFenceValue {};
+
+	// Non-blocking CUDA strea,
+	CUstream CUDAStream {};
 	
 
 	void Initialize (size_t InSharedBufferSize)
@@ -87,47 +87,55 @@ public:
 			};
 			check(cuImportExternalMemory(&SharedMemoryCUDA, &CUDAExternalMemoryHandleDesc) == CUDA_SUCCESS);
 		}
-		
+		// CUDA stream
+		{
+			// Non blocking stream will not be affected by the NULL stream.
+			check(cuStreamCreate(&CUDAStream, CU_STREAM_NON_BLOCKING) == CUDA_SUCCESS);
+		}
 	}
 	void Destroy ()
 	{
+		if(CUDAStream) {
+			cuStreamSynchronize(CUDAStream);
+			check(cuStreamDestroy_v2(CUDAStream) == CUDA_SUCCESS);
+			CUDAStream = nullptr;
+		}
 		// Destroy CUDA resources.
-		check(cuDestroyExternalMemory(SharedMemoryCUDA) == CUDA_SUCCESS);
-		check(cuDestroyExternalSemaphore(SharedFenceCUDA) == CUDA_SUCCESS);
+		if(SharedMemoryCUDA)
+		{
+			check(cuDestroyExternalMemory(SharedMemoryCUDA) == CUDA_SUCCESS);
+			SharedMemoryCUDA = nullptr;
+		}
+		if(SharedFenceCUDA)
+		{
+			check(cuDestroyExternalSemaphore(SharedFenceCUDA) == CUDA_SUCCESS);
+			SharedFenceCUDA = nullptr;
+		}
 		// Destroy D3D12 resources.
 		if(SharedMemoryD3D12)
 		{
-			if(SharedMemoryD3D12->Release() != S_OK)
-			{
-				UE_LOG(MIGI, Warning, TEXT("Unsuccessful shared buffer release, just try to proceed."));
-			}
 			if(SharedMemoryD3D12.GetRefCount() != 1)
 			{
 				UE_LOG(MIGI, Warning, TEXT("Someone else rather than the adapter is holding the shared buffer reference!"
 					"Just proceeds and ignore leaks."));
 			}
-			SharedMemoryD3D12 = nullptr;
 		}
-		if(SharedFenceD3D12)
-		{
-			// TODO Will this be redundant?
-			SharedFenceD3D12->Release();
-			SharedFenceD3D12.Reset();
-		}
+		SharedMemoryD3D12 = nullptr;
+		SharedFenceD3D12.Reset();
 	}
 
-	~MIGISyncUtilsD3D12State ()
+	~MIGICUDAAdapterD3D12State ()
 	{
 		Destroy();
 	}
 	
 };
 
-bool FMIGISyncUtilsD3D12::TryActivate()
+bool FMIGICUDAAdapterD3D12::TryActivate()
 {
 	// D3D12 needs no activation, so we just do some checking here.
 	
-	// This function is bound to the PostPreStartScreen.
+	// This function is bound to the PostConfiguration loading stage.
 	// Check the validity of RHI
 	if(GDynamicRHI == nullptr)
 	{
@@ -140,14 +148,14 @@ bool FMIGISyncUtilsD3D12::TryActivate()
 	}
 
 	// Create states required for synchronization.
-	State = MakeUnique<MIGISyncUtilsD3D12State>();
+	State = MakeUnique<MIGICUDAAdapterD3D12State>();
 	State->Initialize(FMIGIModule::Get().GetSharedBufferSize());
 	
 	UE_LOG(MIGI, Display, TEXT("Successfully activated RHI-CUDA synchronization utilities for D3D12: %s"), RHIName);
 	return true;
 }
 
-FMIGISyncUtilsD3D12::~FMIGISyncUtilsD3D12()
+FMIGICUDAAdapterD3D12::~FMIGICUDAAdapterD3D12()
 {
 	FModuleManager::Get().OnModulesChanged().Remove(
 		RHIExtensionRegistrationDelegateHandle
@@ -155,20 +163,41 @@ FMIGISyncUtilsD3D12::~FMIGISyncUtilsD3D12()
 	RHIExtensionRegistrationDelegateHandle.Reset();
 }
 
-void FMIGISyncUtilsD3D12::SynchronizeFromCUDA(FRHICommandListImmediate& RHICmdList)
+void FMIGICUDAAdapterD3D12::SynchronizeFromCUDA(FRHICommandListImmediate& RHICmdList)
+{
+	auto D3D = GetDynamicRHI<ID3D12DynamicRHI>();
+	State->CurrentFenceValue ++;
+	// Queue a D3D command to wait for the fence.
+	D3D->RHIWaitManualFence(RHICmdList, State->SharedFenceD3D12.Get(), State->CurrentFenceValue);
+	// Submit a CUDA command to signal the fence.
+	auto SignalParams = CUDA_EXTERNAL_SEMAPHORE_SIGNAL_PARAMS {.params = {.fence = {.value = State->CurrentFenceValue}}};
+	cuSignalExternalSemaphoresAsync(
+		&State->SharedFenceCUDA, &SignalParams,
+		1, State->CUDAStream
+	);
+	// It's free to submit any synchronized D3D commands now.
+	// TODO: No memory barriers required?
+}
+
+
+void FMIGICUDAAdapterD3D12::SynchronizeToCUDA(FRHICommandListImmediate& RHICmdList)
 {
 	auto D3D = GetDynamicRHI<ID3D12DynamicRHI>();
 	// Signal the shared fence upon computation work done.
 	State->CurrentFenceValue ++;
 	D3D->RHISignalManualFence(RHICmdList, State->SharedFenceD3D12.Get(), State->CurrentFenceValue);
-	auto CUDAContext = FModuleManager::Get().GetModuleChecked<FCUDAModule>("CUDA").GetCudaContext();
-	// TODO
-	check(false && "Unimplemented");
+	auto WaitParams = CUDA_EXTERNAL_SEMAPHORE_WAIT_PARAMS {.params = {.fence = {.value =  State->CurrentFenceValue}}};
+	// Stall the CUDA stream until D3D semaphore is shot.
+	cuWaitExternalSemaphoresAsync(&State->SharedFenceCUDA, &WaitParams, 1, State->CUDAStream);
+	// It's free to submit any synchronized CUDA commands now.
 }
 
-
-void FMIGISyncUtilsD3D12::SynchronizeToCUDA(FRHICommandListImmediate& RHICmdList)
+CUstream FMIGICUDAAdapterD3D12::GetCUDAStream() const
 {
-	// TODO
-	check(false && "Unimplemented");
+	return State->CUDAStream;
+}
+
+FRHIBuffer* FMIGICUDAAdapterD3D12::GetSharedBuffer() const
+{
+	return State->SharedMemoryD3D12;
 }

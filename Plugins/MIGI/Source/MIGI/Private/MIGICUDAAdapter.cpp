@@ -1,18 +1,18 @@
-﻿#include "MIGISyncAdapter.h"
+﻿#include "MIGICUDAAdapter.h"
 
-#include "Vulkan\MIGISyncAdapterVulkan.h"
+#include "Vulkan\MIGICUDAAdapterVulkan.h"
 
-static TUniquePtr<IMIGISyncAdapter> SyncUtilsVulkan;
-static TUniquePtr<IMIGISyncAdapter> SyncUtilsSelected;
+static TUniquePtr<IMIGICUDAAdapter> SyncUtilsVulkan;
+static TUniquePtr<IMIGICUDAAdapter> SyncUtilsSelected;
 
-void IMIGISyncAdapter::InstallForAllRHIs()
+void IMIGICUDAAdapter::InstallForAllRHIs()
 {
 	// We only support Vulkan currently.
-	SyncUtilsVulkan = MakeUnique<FMIGISyncUtilsVulkan>();
+	SyncUtilsVulkan = MakeUnique<FMIGICUDAAdapterVulkan>();
 	SyncUtilsVulkan->InstallRHIConfigurations();
 }
 
-IMIGISyncAdapter* IMIGISyncAdapter::GetInstance ()
+IMIGICUDAAdapter* IMIGICUDAAdapter::GetInstance ()
 {
 	if(SyncUtilsSelected.IsValid())
 		return SyncUtilsSelected.Get();
@@ -24,7 +24,7 @@ IMIGISyncAdapter* IMIGISyncAdapter::GetInstance ()
 	return SyncUtilsSelected.Get();
 }
 
-void IMIGISyncAdapter::Clear()
+void IMIGICUDAAdapter::Clear()
 {
 	// Destructors will take care of everything.
 	SyncUtilsVulkan.Reset();

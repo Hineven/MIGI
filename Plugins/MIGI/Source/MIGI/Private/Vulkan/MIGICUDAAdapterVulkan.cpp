@@ -1,4 +1,4 @@
-﻿#include "MIGISyncAdapterVulkan.h"
+﻿#include "MIGICUDAAdapterVulkan.h"
 
 #include "MIGILogCategory.h"
 
@@ -9,7 +9,7 @@
 #include "IVulkanDynamicRHI.h"
 
 
-bool FMIGISyncUtilsVulkan::InstallRHIConfigurations()
+bool FMIGICUDAAdapterVulkan::InstallRHIConfigurations()
 {
 	// Register a delegate to watch for loaded modules.
 	// This delegate should be shot after module loading but before RHI initialization (that is, CreateDynamicRHI()).
@@ -36,7 +36,7 @@ bool FMIGISyncUtilsVulkan::InstallRHIConfigurations()
 	return true;
 }
 
-bool FMIGISyncUtilsVulkan::TryActivate()
+bool FMIGICUDAAdapterVulkan::TryActivate()
 {
 	// This function is bound to the PostPreStartScreen.
 	// Vulkan RHI (if chosen) should be initialized. Just check if it's valid.
@@ -55,7 +55,7 @@ bool FMIGISyncUtilsVulkan::TryActivate()
 	return true;
 }
 
-FMIGISyncUtilsVulkan::~FMIGISyncUtilsVulkan()
+FMIGICUDAAdapterVulkan::~FMIGICUDAAdapterVulkan()
 {
 	FModuleManager::Get().OnModulesChanged().Remove(
 		RHIExtensionRegistrationDelegateHandle
@@ -63,15 +63,25 @@ FMIGISyncUtilsVulkan::~FMIGISyncUtilsVulkan()
 	RHIExtensionRegistrationDelegateHandle.Reset();
 }
 
-void FMIGISyncUtilsVulkan::SynchronizeFromCUDA(FRHICommandListImmediate& RHICmdList)
+void FMIGICUDAAdapterVulkan::SynchronizeFromCUDA(FRHICommandListImmediate& RHICmdList)
 {
-	// TODO
 	check(false && "Unimplemented.");
 }
 
 
-void FMIGISyncUtilsVulkan::SynchronizeToCUDA(FRHICommandListImmediate& RHICmdList)
+void FMIGICUDAAdapterVulkan::SynchronizeToCUDA(FRHICommandListImmediate& RHICmdList)
 {
-	// TODO
 	check(false && "Unimplemented.");
+}
+
+CUstream FMIGICUDAAdapterVulkan::GetCUDAStream() const
+{
+	check(false && "Unimplemented.");
+	return nullptr;
+}
+
+FRHIBuffer* FMIGICUDAAdapterVulkan::GetSharedBuffer() const
+{
+	check(false && "Unimplemented.");
+	return nullptr;
 }

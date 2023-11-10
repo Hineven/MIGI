@@ -21,5 +21,7 @@ protected:
 	void InitializeMIGI ();
 	
 	bool bModuleActive {false};
+	bool bAdapterActive {false};
+	bool bCUDAActive {false};
 	FDelegateHandle DiffuseIndirectDelegateHandle {};
 };
