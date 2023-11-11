@@ -4,6 +4,7 @@ TAutoConsoleVariable<bool> CVarMIGIEnabled(TEXT("r.MIGI.Enabled"), 0, TEXT("Enab
 TAutoConsoleVariable<bool> CVarMIGIDebugEnabled(TEXT("r.MIGI.DebugEnabled"), 0, TEXT("Enable MIGI Debug. 0: Disable, 1: Enable"), ECVF_RenderThreadSafe);
 TAutoConsoleVariable<int> CVarMIGIDebugPixelCoordsX(TEXT("r.MIGI.DebugPixelCoordsX"), 0, TEXT("X coordinate of the pixel to debug MIGI"), ECVF_RenderThreadSafe);
 TAutoConsoleVariable<int> CVarMIGIDebugPixelCoordsY(TEXT("r.MIGI.DebugPixelCoordsY"), 0, TEXT("Y coordinate of the pixel to debug MIGI"), ECVF_RenderThreadSafe);
+
 bool IsMIGIEnabled() {
     return CVarMIGIEnabled.GetValueOnRenderThread();
 }
@@ -28,4 +29,11 @@ bool IsMIGIDebugEnabled()
 void SetMIGIDebugEnabled(bool bEnabled)
 {
     CVarMIGIDebugEnabled->Set(bEnabled);
+}
+
+TAutoConsoleVariable<int> CVarMIGISharedBufferSizeOverride(TEXT("r.MIGI.SharedBufferSizeOverride"), 0, TEXT("Override the shared buffer size. 0: Disable, >0: Enable"), ECVF_RenderThreadSafe);
+
+size_t GetMIGISharedBufferSize()
+{
+    return CVarMIGISharedBufferSizeOverride.GetValueOnRenderThread();
 }

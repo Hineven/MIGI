@@ -22,31 +22,13 @@ public class MIGI : ModuleRules
 		// I admit that these are tricky hacks, but I failed to figure out a better way.
 		// We need this to tightly couple our module with the renderer
 		PrivateIncludePaths.Add(EngineRuntimeModulesSourceDirectoryPath + "Renderer/Private");
-		// As well as headers of some RHIs. We need low level access to them in order to synchronize with CUDA.
-		PrivateIncludePaths.Add(EngineRuntimeModulesSourceDirectoryPath + "VulkanRHI/Private");
-		PrivateIncludePaths.Add(EngineRuntimeModulesSourceDirectoryPath + "D3D12RHI/Private");
 		
 		// We have to include more dependencies to use the headers above.
+		AddEngineThirdPartyPrivateStaticDependencies(Target, "Vulkan");
 		AddEngineThirdPartyPrivateStaticDependencies(Target, "DX12");
 		AddEngineThirdPartyPrivateStaticDependencies(Target, "NVAPI");
-
-		if (Target.Platform.IsInGroup(UnrealPlatformGroup.Windows))
-		{
-			PrivateDependencyModuleNames.Add("HeadMountedDisplay");
-
-			PublicDefinitions.Add("D3D12RHI_PLATFORM_HAS_CUSTOM_INTERFACE=0");
-
-			if (Target.WindowsPlatform.bPixProfilingEnabled &&
-			    (Target.Configuration != UnrealTargetConfiguration.Shipping || Target.bAllowProfileGPUInShipping) &&
-			    (Target.Configuration != UnrealTargetConfiguration.Test || Target.bAllowProfileGPUInTest))
-			{
-				PublicDefinitions.Add("PROFILE");
-				PublicDependencyModuleNames.Add("WinPixEventRuntime");
-			}
-		}
-		
-		// The generic Vulkan headers are also needed.
-		PrivateIncludePaths.Add(EngineThirdpartyModulesSourceDirectoryPath + "Vulkan/Include");
+		// This is a public dependency for CUDA module.
+		// AddEngineThirdPartyPrivateStaticDependencies(Target, "CUDAHeader");
 		
 		PublicDependencyModuleNames.AddRange(
 			new string[]
@@ -70,7 +52,7 @@ public class MIGI : ModuleRules
 				// We need to statically link with the renderer.
 				"Renderer",
 				// RHI and its implementations
-				"RHI",
+				"RHI", "RHICore",
 				"VulkanRHI", "Vulkan", "D3D12RHI",
 				// CUDA
 				"CUDA"

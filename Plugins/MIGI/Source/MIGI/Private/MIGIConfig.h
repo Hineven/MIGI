@@ -11,3 +11,5 @@ void SetMIGIDebugPixelCoords (FIntPoint PixelCoords);
 
 bool IsMIGIDebugEnabled ();
 void SetMIGIDebugEnabled (bool bEnabled);
+
+size_t GetMIGISharedBufferSize ();

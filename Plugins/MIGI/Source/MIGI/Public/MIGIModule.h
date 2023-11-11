@@ -15,10 +15,8 @@ public:
 		return FModuleManager::LoadModuleChecked< FMIGIModule >("MIGI");
 	}
 	
-	size_t GetSharedBufferSize () const ;
-	
 protected:
-	void InitializeMIGI ();
+	bool ActivateMIGI ();
 	
 	bool bModuleActive {false};
 	bool bAdapterActive {false};
