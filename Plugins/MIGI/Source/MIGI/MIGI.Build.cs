@@ -17,42 +17,23 @@ public class MIGI : ModuleRules
 		string EnginePath = Path.GetFullPath(Target.RelativeEnginePath);
 		// Now get the base of UE's modules dir (could also be Developer, Editor, ThirdParty)
 		string EngineRuntimeModulesSourceDirectoryPath = EnginePath + "Source/Runtime/";
-		string EngineThirdpartyModulesSourceDirectoryPath = EnginePath + "Source/ThirdParty/";
     
-		// I admit that these are tricky hacks, but I failed to figure out a better way.
-		// We need this to tightly couple our module with the renderer
+		// These are hacks. I failed to figure out a better way.
+		// We need the private renderer headers to tightly couple our module with the renderer
 		PrivateIncludePaths.Add(EngineRuntimeModulesSourceDirectoryPath + "Renderer/Private");
-		// As well as headers of some RHIs. We need low level access to them in order to synchronize with CUDA.
-		PrivateIncludePaths.Add(EngineRuntimeModulesSourceDirectoryPath + "VulkanRHI/Private");
+		// We need low level access to D3D handles.
 		PrivateIncludePaths.Add(EngineRuntimeModulesSourceDirectoryPath + "D3D12RHI/Private");
 		
 		// We have to include more dependencies to use the headers above.
 		AddEngineThirdPartyPrivateStaticDependencies(Target, "DX12");
-		AddEngineThirdPartyPrivateStaticDependencies(Target, "NVAPI");
-
-		if (Target.Platform.IsInGroup(UnrealPlatformGroup.Windows))
-		{
-			PrivateDependencyModuleNames.Add("HeadMountedDisplay");
-
-			PublicDefinitions.Add("D3D12RHI_PLATFORM_HAS_CUSTOM_INTERFACE=0");
-
-			if (Target.WindowsPlatform.bPixProfilingEnabled &&
-			    (Target.Configuration != UnrealTargetConfiguration.Shipping || Target.bAllowProfileGPUInShipping) &&
-			    (Target.Configuration != UnrealTargetConfiguration.Test || Target.bAllowProfileGPUInTest))
-			{
-				PublicDefinitions.Add("PROFILE");
-				PublicDependencyModuleNames.Add("WinPixEventRuntime");
-			}
-		}
+		// We use DirectML to implement neural networks.
+		AddEngineThirdPartyPrivateStaticDependencies(Target, "DirectML");
 		
-		// The generic Vulkan headers are also needed.
-		PrivateIncludePaths.Add(EngineThirdpartyModulesSourceDirectoryPath + "Vulkan/Include");
 		
 		PublicDependencyModuleNames.AddRange(
 			new string[]
 			{
 				"Core"
-				// ... add other public dependencies that you statically link with here ...
 			}
 			);
 		
@@ -70,10 +51,7 @@ public class MIGI : ModuleRules
 				// We need to statically link with the renderer.
 				"Renderer",
 				// RHI and its implementations
-				"RHI",
-				"VulkanRHI", "Vulkan", "D3D12RHI",
-				// CUDA
-				"CUDA"
+				"RHI", "D3D12RHI"
 			}
 		);
 

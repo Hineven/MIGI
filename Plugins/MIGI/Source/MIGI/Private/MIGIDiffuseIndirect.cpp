@@ -1,6 +1,5 @@
 ﻿#include "MIGIDiffuseIndirect.h"
 
-#include "MIGICUDAAdapter.h"
 #include "MIGILogCategory.h"
 #include "RenderGraphBuilder.h"
 #include "RenderGraphEvent.h"
@@ -18,13 +17,7 @@ void MIGIRenderDiffuseIndirect(const FScene& Scene, const FViewInfo& ViewInfo, F
 		ERDGPassFlags::Compute | ERDGPassFlags::NeverCull,
 		[&Scene, &ViewInfo, &RenderResources](FRHICommandListImmediate& RHICmdList)
 		{
-			auto Adapter = IMIGICUDAAdapter::GetInstance();
-			// Barrier the CUDA stream.
-			Adapter->SynchronizeToCUDA(RHICmdList);
-			auto SharedBuffer = Adapter->GetSharedBuffer();
-			auto Stream = Adapter->GetCUDAStream();
-			// cuLaunchKernel()
-			Adapter->SynchronizeFromCUDA(RHICmdList);
+			
 		}
 	);
 }
