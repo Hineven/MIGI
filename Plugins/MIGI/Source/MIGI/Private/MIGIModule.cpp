@@ -2,7 +2,7 @@
 
 #include "MIGIDiffuseIndirect.h"
 #include "MIGILogCategory.h"
-#include "MIGICUDAAdapter.h"
+#include "MIGINNAdapter.h"
 
 #include "CudaModule.h"
 #include "MIGIConstants.h"
@@ -20,19 +20,19 @@ void FMIGIModule::StartupModule()
 	check(GDynamicRHI == nullptr);
 
 	// Initialize and check for RHI-CUDA synchronization support.
-	IMIGICUDAAdapter::Clear();
-	IMIGICUDAAdapter::Install();
+	IMIGINNAdapter::Clear();
+	IMIGINNAdapter::Install();
 	
 	// Callback when the adapter is activated.
-	IMIGICUDAAdapter::OnAdapterActivated.AddLambda([this](){ActivateMIGI();});
+	IMIGINNAdapter::OnAdapterActivated.AddLambda([this](){ActivateMIGI();});
 }
 
 bool FMIGIModule::ActivateMIGI()
 {
 	if(bModuleActive) return true;
-	if(!IMIGICUDAAdapter::GetInstance()) return false;
+	if(!IMIGINNAdapter::GetInstance()) return false;
 	
-	IMIGICUDAAdapter::GetInstance()->AllocateSharedBuffer(C::DefaultSharedBufferSize);
+	IMIGINNAdapter::GetInstance()->AllocateSharedBuffer(C::DefaultSharedBufferSize);
 	
 	UE_LOG(MIGI, Display, TEXT("Activating..."));
 	// Register some delegates
@@ -56,7 +56,7 @@ void FMIGIModule::ShutdownModule()
 		DiffuseIndirectDelegateHandle.Reset();
 	}
 	// Clear adapters
-	IMIGICUDAAdapter::Clear();
+	IMIGINNAdapter::Clear();
 
 }
 

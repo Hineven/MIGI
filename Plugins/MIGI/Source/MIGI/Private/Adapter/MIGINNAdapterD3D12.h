@@ -1,12 +1,12 @@
 ﻿#pragma once
 
 #include "CoreMinimal.h"
-#include "MIGICUDAAdapter.h"
+#include "..\MIGINNAdapter.h"
 
 struct CUDA_DRIVER_API_FUNCTION_LIST;
 class MIGICUDAAdapterD3D12State;
 
-class FMIGICUDAAdapterD3D12 : public IMIGICUDAAdapter
+class FMIGICUDAAdapterD3D12 : public IMIGINNAdapter
 {
 public:
 	virtual bool InstallRHIConfigurations() override;
@@ -21,7 +21,6 @@ protected:
 	virtual bool CanActivate () const override;
 	virtual void Activate() override;
 	void Initialize_RenderThread (FRHICommandListImmediate & RHICmd) ;
-	void ReallocateSharedBuffer_RenderThread (FRHICommandListImmediate & RHICmd) ;
 	FDelegateHandle RHIExtensionRegistrationDelegateHandle;
 	// Prevent multiple extension requests.
 	bool bExtensionsRequested {};

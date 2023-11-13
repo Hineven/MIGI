@@ -20,14 +20,5 @@
 			"Type": "Runtime",
 			"LoadingPhase": "PostConfigInit"
 		}
-	],
-	"PreBuildSteps": [
-		{
-			"Win64": [
-				"set PLUGIN_DIR=$(PluginDir)",
-				"set BINARY_OUTPUT_DIR=$(BinaryOutputDir)",
-				"$(PluginDir)/Build/Win/Build.bat"
-			]
-		}
 	]
 }

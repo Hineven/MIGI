@@ -1,7 +1,7 @@
 ﻿#include "MIGIDiffuseIndirect.h"
 
 #include "MIGIConfig.h"
-#include "MIGICUDAAdapter.h"
+#include "MIGINNAdapter.h"
 #include "MIGILogCategory.h"
 #include "RenderGraphBuilder.h"
 #include "RenderGraphEvent.h"
@@ -13,7 +13,7 @@ END_SHADER_PARAMETER_STRUCT()
 void MIGIRenderDiffuseIndirect(const FScene& Scene, const FViewInfo& ViewInfo, FRDGBuilder& GraphBuilder, FGlobalIlluminationPluginResources& RenderResources)
 {
 
-	auto Adapter = IMIGICUDAAdapter::GetInstance();
+	auto Adapter = IMIGINNAdapter::GetInstance();
 	// Reallocate the shared buffer if necessary.
 	if(GetMIGISharedBufferSize() > 0)
 		Adapter->AllocateSharedBuffer(GetMIGISharedBufferSize());
@@ -25,7 +25,7 @@ void MIGIRenderDiffuseIndirect(const FScene& Scene, const FViewInfo& ViewInfo, F
 		ERDGPassFlags::Compute | ERDGPassFlags::NeverCull,
 		[&Scene, &ViewInfo, &RenderResources](FRHICommandListImmediate& RHICmdList)
 		{
-			auto Adapter = IMIGICUDAAdapter::GetInstance();
+			auto Adapter = IMIGINNAdapter::GetInstance();
 			// The adapter is not ready for some reason (reloading, etc). Render nothing.
 			if(!Adapter->IsReady()) return;
 			// Barrier the CUDA stream.

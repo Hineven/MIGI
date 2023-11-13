@@ -27,8 +27,8 @@ public class MIGI : ModuleRules
 		AddEngineThirdPartyPrivateStaticDependencies(Target, "Vulkan");
 		AddEngineThirdPartyPrivateStaticDependencies(Target, "DX12");
 		AddEngineThirdPartyPrivateStaticDependencies(Target, "NVAPI");
-		// This is a public dependency for CUDA module.
-		// AddEngineThirdPartyPrivateStaticDependencies(Target, "CUDAHeader");
+		// Requires our NN external library.
+		AddEngineThirdPartyPrivateStaticDependencies(Target, "MIGINN");
 		
 		PublicDependencyModuleNames.AddRange(
 			new string[]
@@ -54,8 +54,9 @@ public class MIGI : ModuleRules
 				// RHI and its implementations
 				"RHI", "RHICore",
 				"VulkanRHI", "Vulkan", "D3D12RHI",
-				// CUDA
-				"CUDA"
+				// CUDA is statically linked with MIGINN module.
+				// We'll not use CUDA module in UE for convenience reasons.
+				// "CUDA"
 			}
 		);
 

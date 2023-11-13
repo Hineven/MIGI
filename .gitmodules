@@ -1,0 +1,3 @@
+[submodule "Plugins/MIGI/Source/MIGICUDA/ext/tiny-cuda-nn"]
+	path = Plugins/MIGI/Source/MIGICUDA/ext/tiny-cuda-nn
+	url = https://github.com/NVlabs/tiny-cuda-nn/
