@@ -1,10 +1,11 @@
 #include "MIGIModule.h"
 
+#include "Interfaces/IPluginManager.h"
+
 #include "MIGIDiffuseIndirect.h"
 #include "MIGILogCategory.h"
 #include "MIGINNAdapter.h"
 
-#include "CudaModule.h"
 #include "MIGIConstants.h"
 
 
@@ -19,9 +20,13 @@ void FMIGIModule::StartupModule()
 	// GDynamicRHI is not initialized now.
 	check(GDynamicRHI == nullptr);
 
+	// Add shader mapping.
+	auto PluginShaderDir = FPaths::Combine(IPluginManager::Get().FindPlugin(TEXT("MIGI"))->GetBaseDir(), TEXT("Shaders"));
+	AddShaderSourceDirectoryMapping(TEXT("/Plugin/MIGI"), PluginShaderDir);
+	
 	// Initialize and check for RHI-CUDA synchronization support.
 	IMIGINNAdapter::Clear();
-	IMIGINNAdapter::Install();
+	IMIGINNAdapter::Install(C::DefaultSharedBufferSize, C::DefaultSharedBufferSize);
 	
 	// Callback when the adapter is activated.
 	IMIGINNAdapter::OnAdapterActivated.AddLambda([this](){ActivateMIGI();});
@@ -31,8 +36,6 @@ bool FMIGIModule::ActivateMIGI()
 {
 	if(bModuleActive) return true;
 	if(!IMIGINNAdapter::GetInstance()) return false;
-	
-	IMIGINNAdapter::GetInstance()->AllocateSharedBuffer(C::DefaultSharedBufferSize);
 	
 	UE_LOG(MIGI, Display, TEXT("Activating..."));
 	// Register some delegates

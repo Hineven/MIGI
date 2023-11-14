@@ -1,0 +1,34 @@
+﻿/* This file implements several NN interactions.
+ */
+
+
+#include "/Engine/Public/Platform.ush"
+
+
+RWBuffer<float> NNInputBuffer;
+Buffer<float> NNOutputBuffer;
+
+RWTexture2D<float4> ColorBuffer;
+
+// The test param.
+float4 TestParam;
+
+[numthreads(1, 1, 1)]
+void NNInput ()
+{
+	// Fill the NNInputBuffer with TestParam.
+	NNInputBuffer[0] = TestParam.x;
+	NNInputBuffer[1] = TestParam.y;
+	NNInputBuffer[2] = TestParam.z;
+	NNInputBuffer[3] = TestParam.w;
+}
+
+[numthreads(16, 16, 1)]
+void NNOutput ()
+{
+	// Calculate the pixel coordinates
+	uint2 PixelCoord = uint2(SV_DispatchThreadID.xy);
+	// Fill the corresponding color buffer pixel with NNOutputBuffer.
+	ColorBuffer[PixelCoord] = float4(NNOutputBuffer[0], NNOutputBuffer[1], NNOutputBuffer[2], NNOutputBuffer[3]);
+}
+

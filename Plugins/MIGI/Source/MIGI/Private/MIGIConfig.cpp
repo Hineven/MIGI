@@ -30,10 +30,3 @@ void SetMIGIDebugEnabled(bool bEnabled)
 {
     CVarMIGIDebugEnabled->Set(bEnabled);
 }
-
-TAutoConsoleVariable<int> CVarMIGISharedBufferSizeOverride(TEXT("r.MIGI.SharedBufferSizeOverride"), 0, TEXT("Override the shared buffer size. 0: Disable, >0: Enable"), ECVF_RenderThreadSafe);
-
-size_t GetMIGISharedBufferSize()
-{
-    return CVarMIGISharedBufferSizeOverride.GetValueOnRenderThread();
-}

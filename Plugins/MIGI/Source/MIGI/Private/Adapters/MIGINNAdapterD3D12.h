@@ -10,13 +10,12 @@ class FMIGICUDAAdapterD3D12 : public IMIGINNAdapter
 {
 public:
 	virtual bool InstallRHIConfigurations() override;
-	virtual void SynchronizeFromCUDA(FRHICommandListImmediate& RHICmdList) override;
-	virtual void SynchronizeToCUDA(FRHICommandListImmediate& RHICmdList) override;
+	virtual void SynchronizeFromNN(FRHICommandListImmediate& RHICmdList) override;
+	virtual void SynchronizeToNN(FRHICommandListImmediate& RHICmdList) override;
 	FMIGICUDAAdapterD3D12 () ;
 	virtual ~FMIGICUDAAdapterD3D12() override;
-	virtual CUstream GetCUDAStream() const override;
-	virtual FRHIBuffer* GetSharedBuffer() const override;
-	virtual void AllocateSharedBuffer(size_t InSharedBufferSize) override;
+	virtual FRHIBuffer* GetSharedInputBuffer() const override;
+	virtual FRHIBuffer * GetSharedOutputBuffer() const override;
 protected:
 	virtual bool CanActivate () const override;
 	virtual void Activate() override;

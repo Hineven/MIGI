@@ -7,7 +7,7 @@
 class IMIGINNAdapter
 {
 public:
-	static void Install (size_t InSharedBufferSize) ;
+	static void Install (size_t InSharedInputBufferSize, size_t InSharedOutputBufferSize) ;
 	static IMIGINNAdapter * GetInstance ();
 	// Called when the module shuts down.
 	static void Clear ();
@@ -22,12 +22,13 @@ public:
 	virtual bool InstallRHIConfigurations () = 0;
 	
 	// Insert a semaphore here. Signal CUDA when the commands submitted are completed.
-	virtual void SynchronizeToCUDA (FRHICommandListImmediate & RHICmdList) = 0;
+	virtual void SynchronizeToNN (FRHICommandListImmediate & RHICmdList) = 0;
 	// Insert a semaphore to wait for (on GPU) for the succeeding commands.
-	virtual void SynchronizeFromCUDA (FRHICommandListImmediate & RHICmdList) = 0;
+	virtual void SynchronizeFromNN (FRHICommandListImmediate & RHICmdList) = 0;
 
 	// Get the shared memory among RHI and CUDA.
-	virtual FRHIBuffer * GetSharedBuffer () const = 0;
+	virtual FRHIBuffer * GetSharedInputBuffer () const = 0;
+	virtual FRHIBuffer * GetSharedOutputBuffer () const = 0;
 
 	IMIGINNAdapter (const IMIGINNAdapter &) = delete;
 	IMIGINNAdapter & operator= (const IMIGINNAdapter &) = delete;
@@ -50,9 +51,8 @@ protected:
 	virtual void Activate () = 0;
 	IMIGINNAdapter () = default;
 
-	inline static size_t SharedBufferSize {};
+	inline static size_t SharedInputBufferSize {};
+	inline static size_t SharedOutputBufferSize {};
 	bool bReady {};
-private:
-	static void TryActivatePostCUDAInit ();
 };
 #endif // MIGI_SYNC_UTILS_H

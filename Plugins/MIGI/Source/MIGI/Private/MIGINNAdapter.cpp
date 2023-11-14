@@ -1,21 +1,21 @@
 ﻿#include "MIGINNAdapter.h"
 
-#include "CudaModule.h"
 #include "MIGILogCategory.h"
-#include "MIGINN.h"
-#include "Adapter\MIGINNAdapterD3D12.h"
+#include "Adapters/MIGINNAdapterD3D12.h"
 
 // static TUniquePtr<IMIGICUDAAdapter> SyncUtilsVulkan;
 static TUniquePtr<IMIGINNAdapter> AdapterD3D12;
 static TUniquePtr<IMIGINNAdapter> AdapterSelected;
 
 FSimpleMulticastDelegate IMIGINNAdapter::OnAdapterActivated;
-size_t IMIGINNAdapter::SharedBufferSize;
+size_t IMIGINNAdapter::SharedInputBufferSize;
+size_t IMIGINNAdapter::SharedOutputBufferSize;
 
 // This function is executed in the PreEarlyStartupScreen phase.
-void IMIGINNAdapter::Install(size_t InSharedBufferSize)
+void IMIGINNAdapter::Install(size_t InSharedInputBufferSize, size_t InSharedOutputBufferSize)
 {
-	SharedBufferSize = InSharedBufferSize;
+	SharedInputBufferSize = InSharedInputBufferSize;
+	SharedOutputBufferSize = InSharedOutputBufferSize;
 	// SyncUtilsVulkan = MakeUnique<FMIGICUDAAdapterVulkan>();
 	// SyncUtilsVulkan->InstallRHIConfigurations();
 	AdapterD3D12 = MakeUnique<FMIGICUDAAdapterD3D12>();
@@ -23,29 +23,6 @@ void IMIGINNAdapter::Install(size_t InSharedBufferSize)
 
 	// Install the TryActivate function.
 	FCoreDelegates::OnInit.AddStatic(TryActivate);
-}
-
-void IMIGINNAdapter::TryActivatePostCUDAInit ()
-{
-	// InitCuda() is executed.
-	
-	// Just try to activate the correct one.
-	// if(SyncUtilsVulkan->TryActivate())
-	// {
-	// 	SyncUtilsSelected = std::move(SyncUtilsVulkan);
-	// }
-	if(AdapterD3D12->CanActivate())
-	{
-		AdapterSelected = std::move(AdapterD3D12);
-	}
-
-	if(AdapterSelected)
-	{
-		AdapterSelected->Activate();
-		IMIGINNAdapter::OnAdapterActivated.Broadcast();
-	} else {
-		UE_LOG(MIGI, Warning, TEXT("Not supported RHI. MIGI wont be activated."));
-	}
 }
 
 void IMIGINNAdapter::TryActivate()
@@ -62,7 +39,10 @@ void IMIGINNAdapter::TryActivate()
 		UE_LOG(MIGI, Warning, TEXT("Not supported platform, MIGI wont be active."));
 		return ;
 	}
+
+	// Okay activate the selected adapter.
 	AdapterSelected->Activate();
+	IMIGINNAdapter::OnAdapterActivated.Broadcast();
 }
 
 
