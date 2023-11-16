@@ -80,16 +80,20 @@ void FMIGICUDAAdapterD3D12::Initialize_RenderThread (FRHICommandListImmediate & 
 	// Shared memory allocation
 	
 	// We need this buffer to be a storage buffer and shared.
-	auto BufferDesc1 = FRHIBufferDesc (SharedInputBufferSize, 0, EBufferUsageFlags::Shared | EBufferUsageFlags::UnorderedAccess);
+	auto BufferDesc1 = FRHIBufferDesc (SharedInputBufferSize, 4,
+		EBufferUsageFlags::Shared | EBufferUsageFlags::UnorderedAccess
+		| EBufferUsageFlags::StructuredBuffer | EBufferUsageFlags::ShaderResource);
 	auto BufferCreateInfo1 = FRHIResourceCreateInfo (TEXT("MIGI Shared Input Buffer"));
 	// Buffer creation without initialization wont use RHICmd, anyway it's required by UE RHI interface.
 	// We have to place this logic inside render thread.
 	State->SharedNNInputBufferD3D12 = D3D->RHICreateBuffer(RHICmd, BufferDesc1, ERHIAccess::UAVMask, BufferCreateInfo1);
 	check(State->SharedNNInputBufferD3D12.IsValid());
-
-	auto BufferDesc2 = FRHIBufferDesc (SharedInputBufferSize, 0, EBufferUsageFlags::Shared | EBufferUsageFlags::UnorderedAccess);
+	
+	auto BufferDesc2 = FRHIBufferDesc (SharedInputBufferSize, 4, 
+		EBufferUsageFlags::Shared | EBufferUsageFlags::UnorderedAccess
+		| EBufferUsageFlags::StructuredBuffer | EBufferUsageFlags::ShaderResource);
 	auto BufferCreateInfo2 = FRHIResourceCreateInfo (TEXT("MIGI Shared Output Buffer"));
-	State->SharedNNInputBufferD3D12 = D3D->RHICreateBuffer(RHICmd, BufferDesc2, ERHIAccess::UAVMask, BufferCreateInfo2);
+	State->SharedNNOutputBufferD3D12 = D3D->RHICreateBuffer(RHICmd, BufferDesc2, ERHIAccess::UAVMask, BufferCreateInfo2);
 	check(State->SharedNNOutputBufferD3D12.IsValid());
 
 	// Create a Windows HANDLE of the shared buffer for interop
@@ -137,15 +141,10 @@ bool FMIGICUDAAdapterD3D12::CanActivate() const
 	{
 		return false;
 	}
-	auto RHIName = GDynamicRHI->GetName();
 	if(!IsRHID3D12())
 	{
 		return false;
 	}
-
-	// Check for the presence of CUDA module.
-	auto bCUDAModule = FModuleManager::Get().IsModuleLoaded("CUDA");
-	if(!bCUDAModule) return false;
 	return true;
 }
 void FMIGICUDAAdapterD3D12::Activate()
@@ -173,23 +172,33 @@ FMIGICUDAAdapterD3D12::~FMIGICUDAAdapterD3D12()
 	RHIExtensionRegistrationDelegateHandle.Reset();
 }
 
-void FMIGICUDAAdapterD3D12::SynchronizeFromNN(FRHICommandListImmediate& RHICmdList)
+void FMIGICUDAAdapterD3D12::SynchronizeFromNN(FRHICommandList& RHICmdList)
 {
 	auto SyncFenceValue = State->NextFenceValue++;
 	check(MIGINNSignalFenceValue(SyncFenceValue) == MIGINNResultType::eSuccess);
 	// Stall until NN signals.
 	auto D3D = GetID3D12DynamicRHI();
-	D3D->RHIWaitManualFence(RHICmdList, State->SharedFenceD3D12.Get(), SyncFenceValue);
+	// It's possible for non-bypass mode RHICmdList to have no ComputeContext.
+	// So we queue a RHI lambda command for delayed execution.
+	RHICmdList.EnqueueLambda(TEXT("RHIWaitManualFence"),
+		[D3D, SyncFenceValue, Fence = State->SharedFenceD3D12](FRHICommandList& RHICmdList){
+		D3D->RHIWaitManualFence(RHICmdList, Fence.Get(), SyncFenceValue);
+	});
 }
 
 
-void FMIGICUDAAdapterD3D12::SynchronizeToNN(FRHICommandListImmediate& RHICmdList)
+void FMIGICUDAAdapterD3D12::SynchronizeToNN(FRHICommandList& RHICmdList)
 {
 	auto D3D = GetDynamicRHI<ID3D12DynamicRHI>();
 	auto SyncFenceValue = State->NextFenceValue++;
 	// Signal the shared fence upon computation work done.
-	D3D->RHISignalManualFence(RHICmdList, State->SharedFenceD3D12.Get(), State->NextFenceValue);
-	check(MIGINNWaitFenceValue(SyncFenceValue) == MIGINNResultType::eSuccess);	
+	// It's possible for non-bypass mode RHICmdList to have no ComputeContext.
+	// So we queue a RHI lambda command for delayed execution.
+	RHICmdList.EnqueueLambda(TEXT("RHISignalManualFence"),
+		[D3D, SyncFenceValue, Fence = State->SharedFenceD3D12](FRHICommandList& RHICmdList){
+			D3D->RHISignalManualFence(RHICmdList, Fence.Get(), SyncFenceValue);
+		});	
+	check(MIGINNWaitFenceValue(SyncFenceValue) == MIGINNResultType::eSuccess);
 }
 
 FRHIBuffer* FMIGICUDAAdapterD3D12::GetSharedInputBuffer() const

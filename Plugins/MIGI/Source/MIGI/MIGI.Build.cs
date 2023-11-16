@@ -57,6 +57,8 @@ public class MIGI : ModuleRules
 				// CUDA is statically linked with MIGINN module.
 				// We'll not use CUDA module in UE for convenience reasons.
 				// "CUDA"
+				// Needed to get the Project & Plugin resource directories.
+				"Projects"
 			}
 		);
 

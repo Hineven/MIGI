@@ -10,8 +10,8 @@ class FMIGICUDAAdapterD3D12 : public IMIGINNAdapter
 {
 public:
 	virtual bool InstallRHIConfigurations() override;
-	virtual void SynchronizeFromNN(FRHICommandListImmediate& RHICmdList) override;
-	virtual void SynchronizeToNN(FRHICommandListImmediate& RHICmdList) override;
+	virtual void SynchronizeFromNN(FRHICommandList& RHICmdList) override;
+	virtual void SynchronizeToNN(FRHICommandList& RHICmdList) override;
 	FMIGICUDAAdapterD3D12 () ;
 	virtual ~FMIGICUDAAdapterD3D12() override;
 	virtual FRHIBuffer* GetSharedInputBuffer() const override;
@@ -21,7 +21,5 @@ protected:
 	virtual void Activate() override;
 	void Initialize_RenderThread (FRHICommandListImmediate & RHICmd) ;
 	FDelegateHandle RHIExtensionRegistrationDelegateHandle;
-	// Prevent multiple extension requests.
-	bool bExtensionsRequested {};
 	TUniquePtr<MIGICUDAAdapterD3D12State> State;
 };

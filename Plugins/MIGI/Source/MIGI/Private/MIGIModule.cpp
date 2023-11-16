@@ -1,12 +1,15 @@
 #include "MIGIModule.h"
 
+#include "EngineModule.h"
 #include "Interfaces/IPluginManager.h"
 
-#include "MIGIDiffuseIndirect.h"
+#include "MIGIRendering.h"
 #include "MIGILogCategory.h"
 #include "MIGINNAdapter.h"
 
 #include "MIGIConstants.h"
+#include "MIGIViewExtension.h"
+#include "RendererModule.h"
 
 
 #define LOCTEXT_NAMESPACE "MIGIModule"
@@ -40,6 +43,10 @@ bool FMIGIModule::ActivateMIGI()
 	UE_LOG(MIGI, Display, TEXT("Activating..."));
 	// Register some delegates
 	DiffuseIndirectDelegateHandle = FGlobalIlluminationPluginDelegates::RenderDiffuseIndirectLight().AddStatic(&MIGIRenderDiffuseIndirect);
+	
+	// Register a persistent uniform buffer view extension
+	GetRendererModule().RegisterPersistentViewUniformBufferExtension(FMIGIViewExtension::Get());
+
 	bModuleActive = true;
 	return true;
 }

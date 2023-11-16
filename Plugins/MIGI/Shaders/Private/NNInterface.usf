@@ -24,10 +24,10 @@ void NNInput ()
 }
 
 [numthreads(16, 16, 1)]
-void NNOutput ()
+void NNOutput (uint3 DispatchThreadID : SV_DispatchThreadID)
 {
 	// Calculate the pixel coordinates
-	uint2 PixelCoord = uint2(SV_DispatchThreadID.xy);
+	uint2 PixelCoord = uint2(DispatchThreadID.xy);
 	// Fill the corresponding color buffer pixel with NNOutputBuffer.
 	ColorBuffer[PixelCoord] = float4(NNOutputBuffer[0], NNOutputBuffer[1], NNOutputBuffer[2], NNOutputBuffer[3]);
 }

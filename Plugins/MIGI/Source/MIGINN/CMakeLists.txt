@@ -37,5 +37,16 @@ target_include_directories(MIGINN PUBLIC ext/tiny-cuda-nn/include)
 add_custom_command(TARGET MIGINN POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy
         $<TARGET_FILE:MIGINN>
-        ${CMAKE_SOURCE_DIR}/lib/MIGINN.lib
+        ${CMAKE_SOURCE_DIR}/lib/MIGINN-${CMAKE_BUILD_TYPE}.lib
+)
+# Copy all dependent libraries to the output directory.
+add_custom_command(TARGET MIGINN POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy
+        ${CMAKE_BINARY_DIR}/ext/tiny-cuda-nn/tiny-cuda-nn.lib
+        ${CMAKE_SOURCE_DIR}/lib/tiny-cuda-nn-${CMAKE_BUILD_TYPE}.lib
+)
+add_custom_command(TARGET MIGINN POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy
+        ${CMAKE_BINARY_DIR}/ext/tiny-cuda-nn/dependencies/fmt/fmt.lib
+        ${CMAKE_SOURCE_DIR}/lib/fmt-${CMAKE_BUILD_TYPE}.lib
 )

@@ -4,7 +4,7 @@
 #define MIGI_SYNC_UTILS_H
 #include "CoreMinimal.h"
 
-class IMIGINNAdapter
+class IMIGINNAdapter : public FNoncopyable
 {
 public:
 	static void Install (size_t InSharedInputBufferSize, size_t InSharedOutputBufferSize) ;
@@ -22,16 +22,18 @@ public:
 	virtual bool InstallRHIConfigurations () = 0;
 	
 	// Insert a semaphore here. Signal CUDA when the commands submitted are completed.
-	virtual void SynchronizeToNN (FRHICommandListImmediate & RHICmdList) = 0;
+	virtual void SynchronizeToNN (FRHICommandList & RHICmdList) = 0;
 	// Insert a semaphore to wait for (on GPU) for the succeeding commands.
-	virtual void SynchronizeFromNN (FRHICommandListImmediate & RHICmdList) = 0;
+	virtual void SynchronizeFromNN (FRHICommandList & RHICmdList) = 0;
 
 	// Get the shared memory among RHI and CUDA.
 	virtual FRHIBuffer * GetSharedInputBuffer () const = 0;
 	virtual FRHIBuffer * GetSharedOutputBuffer () const = 0;
 
-	IMIGINNAdapter (const IMIGINNAdapter &) = delete;
-	IMIGINNAdapter & operator= (const IMIGINNAdapter &) = delete;
+	inline static size_t GetSharedInputBufferSize () {return SharedInputBufferSize;}
+	inline static size_t GetSharedOutputBufferSize () {return SharedOutputBufferSize;}
+
+	// Also disable move semantics.
 	IMIGINNAdapter (IMIGINNAdapter &&) = delete;
 	IMIGINNAdapter & operator= (IMIGINNAdapter &&) = delete;
 	
@@ -51,8 +53,8 @@ protected:
 	virtual void Activate () = 0;
 	IMIGINNAdapter () = default;
 
-	inline static size_t SharedInputBufferSize {};
-	inline static size_t SharedOutputBufferSize {};
+	static size_t SharedInputBufferSize;
+	static size_t SharedOutputBufferSize;
 	bool bReady {};
 };
 #endif // MIGI_SYNC_UTILS_H
