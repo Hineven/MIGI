@@ -19,10 +19,11 @@ public:
     MIGINNResultType Initialize (const MIGINNNetworkConfig &Params) {
         try {
             auto MLP = Params.Details.MLP;
-            nlohmann::json EncodingOptions = MLP.InEncodingOptionsJson;
-            nlohmann::json NetworkOptions = MLP.InNetworkOptionsJson;
-            nlohmann::json LossOptions = MLP.InLossOptionsJson;
-            nlohmann::json OptimizerOptions = MLP.InOptimizerOptionsJson;
+            auto ExtraOptions = nlohmann::json::parse(MLP.InExtraOptionsJson);
+            auto EncodingOptions = ExtraOptions["encoding"];
+            auto NetworkOptions = ExtraOptions["network"];
+            auto LossOptions = ExtraOptions["loss"];
+            auto OptimizerOptions = ExtraOptions["optimizer"];
             Loss.reset(tcnn::create_loss<PrecisionClass>(LossOptions));
             Optimizer.reset(tcnn::create_optimizer<PrecisionClass>(OptimizerOptions));
             Network = std::make_shared<NetworkClass>(MLP.InNumInputs, MLP.InNumOutputs, EncodingOptions,

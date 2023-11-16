@@ -51,7 +51,7 @@ void MIGIRenderDiffuseIndirect(const FScene& Scene, const FViewInfo& ViewInfo, F
 				auto InferenceParams = MIGINNInferenceParams {
 					.InInputBufferOffset = 0,
 					.InOutputBufferOffset = 0,
-					.InNumElements =  1
+					.InNumElements =  256
 				};
 				MIGINNInference(InferenceParams);
 				// TODO input training data and train at the same time.

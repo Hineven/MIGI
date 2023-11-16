@@ -2,7 +2,7 @@
 
 #include <string>
 
-constexpr size_t MIGINN_DETAILS_JSON_STRING_SIZE = 4096;
+constexpr size_t MIGINN_DETAILS_JSON_STRING_SIZE = 16384;
 
 enum class MIGINNResultType {
     eSuccess = 0,
@@ -47,12 +47,11 @@ struct MIGINNInitializeParams {
 struct MIGINNDetailsMLP {
     uint32_t InNumInputs {};
     uint32_t InNumOutputs {};
-    uint32_t InLayerNeuronSize {};
-    uint32_t InNumHiddenLayers {};
-    char * InEncodingOptionsJson[MIGINN_DETAILS_JSON_STRING_SIZE];
-    char * InNetworkOptionsJson[MIGINN_DETAILS_JSON_STRING_SIZE];
-    char * InLossOptionsJson[MIGINN_DETAILS_JSON_STRING_SIZE];
-    char * InOptimizerOptionsJson[MIGINN_DETAILS_JSON_STRING_SIZE];
+    char InExtraOptionsJson[MIGINN_DETAILS_JSON_STRING_SIZE];
+//    char * InEncodingOptionsJson[MIGINN_DETAILS_JSON_STRING_SIZE];
+//    char * InNetworkOptionsJson[MIGINN_DETAILS_JSON_STRING_SIZE];
+//    char * InLossOptionsJson[MIGINN_DETAILS_JSON_STRING_SIZE];
+//    char * InOptimizerOptionsJson[MIGINN_DETAILS_JSON_STRING_SIZE];
 };
 
 struct MIGINNNetworkConfig {

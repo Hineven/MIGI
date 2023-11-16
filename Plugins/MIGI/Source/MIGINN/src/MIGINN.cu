@@ -132,10 +132,6 @@ MIGINNResultType MIGINNDestroy() {
 MIGINNResultType MIGINNWaitFenceValue(uint64_t InWaitFenceValue) {
     // Queue a fence wait in the CUDA stream.
     try {
-//        auto WaitParams = cudaExternalSemaphoreWaitParams {
-//                .params = {.fence = {.value = InWaitFenceValue}},
-//                .flags = 0
-//        };
         auto WaitParams = cudaExternalSemaphoreWaitParams{};
         WaitParams.params.fence.value = InWaitFenceValue;
         WaitParams.flags = 0;
@@ -149,10 +145,6 @@ MIGINNResultType MIGINNWaitFenceValue(uint64_t InWaitFenceValue) {
 MIGINNResultType MIGINNSignalFenceValue(uint64_t InSignalFenceValue) {
     // Signal the fence value in the CUDA stream.
     try {
-//        auto SignalParams = cudaExternalSemaphoreSignalParams {
-//                .params = {.fence = {.value = InSignalFenceValue}},
-//                .flags = 0
-//        };
         auto SignalParams = cudaExternalSemaphoreSignalParams{};
         SignalParams.params.fence.value = InSignalFenceValue;
         SignalParams.flags = 0;
@@ -176,5 +168,7 @@ MIGINNResultType MIGINNTrainNetwork(const MIGINNTrainNetworkParams &Params) {
 }
 
 MIGINNResultType MIGINNInference(const MIGINNInferenceParams &Params) {
-    return MIGINNResultType::eCUDAError;
+    if(GNetwork) {
+        return GNetwork->Inference(Params);
+    } else return MIGINNResultType::eError;
 }

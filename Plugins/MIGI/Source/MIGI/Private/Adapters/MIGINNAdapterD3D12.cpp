@@ -4,6 +4,9 @@
 #include "ID3D12DynamicRHI.h"
 #include "MIGINN.h"
 
+// The external json library from MIGINN / tiny-cuda-nn / json
+#include "json/json.hpp"
+
 #include "Microsoft/COMPointer.h"
 
 bool FMIGICUDAAdapterD3D12::InstallRHIConfigurations()
@@ -125,6 +128,55 @@ void FMIGICUDAAdapterD3D12::Initialize_RenderThread (FRHICommandListImmediate & 
 	auto result = MIGINNInitialize(Params);
 	check(result == MIGINNResultType::eSuccess);
 
+	auto NetworkConfigJson = nlohmann::json {
+		{"loss", {
+				{"otype", "RelativeL2"}
+		}},
+		{"optimizer", {
+			{"otype", "Adam"},
+			// {"otype", "Shampoo"},
+			{"learning_rate", 1e-2},
+			{"beta1", 0.9f},
+			{"beta2", 0.99f},
+			{"l2_reg", 0.0f},
+			// The following parameters are only used when the optimizer is "Shampoo".
+			{"beta3", 0.9f},
+			{"beta_shampoo", 0.0f},
+			{"identity", 0.0001f},
+			{"cg_on_momentum", false},
+			{"frobenius_normalization", true},
+		}},
+		{"encoding", {
+			{"otype", "OneBlob"},
+			{"n_bins", 32},
+		}},
+		{"network", {
+			{"otype", "FullyFusedMLP"},
+			// {"otype", "CutlassMLP"},
+			{"n_neurons", 64},
+			{"n_hidden_layers", 4},
+			{"activation", "ReLU"},
+			{"output_activation", "None"},
+		}},
+	};
+	
+	auto NetworkConfig = MIGINNNetworkConfig {
+		.Details = {
+			.MLP = {
+				.InNumInputs = 16,
+				.InNumOutputs =  16
+			}
+		},
+		.Type =  MIGINNNetworkType::eMLP
+	};
+	auto JsonString = to_string(NetworkConfigJson);
+	check(JsonString.length() < MIGINN_DETAILS_JSON_STRING_SIZE);
+	memset(NetworkConfig.Details.MLP.InExtraOptionsJson, 0, sizeof NetworkConfig.Details.MLP.InExtraOptionsJson);
+	memcpy(NetworkConfig.Details.MLP.InExtraOptionsJson, JsonString.c_str(), JsonString.length());
+	
+	result = MIGINNInitializeNeuralNetwork(NetworkConfig);
+	check(result == MIGINNResultType::eSuccess);
+	
 	// Destroy the Windows HANDLEs.
 	CloseHandle(SharedInputBufferHandle);
 	CloseHandle(SharedOutputBufferHandle);
