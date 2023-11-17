@@ -21,9 +21,9 @@ public class MIGINN : ModuleRules
         // Also import the nlohman json library for parsing the network configuration with ease.
         PublicIncludePaths.Add(Path.Combine(ModuleDirectory, "ext/tiny-cuda-nn/dependencies"));
         // This library is compiled from CMake.
-        PublicAdditionalLibraries.Add(Path.Combine(ModuleDirectory, "lib/MIGINN-Release.lib"));
-        PublicAdditionalLibraries.Add(Path.Combine(ModuleDirectory, "lib/tiny-cuda-nn-Release.lib"));
-        PublicAdditionalLibraries.Add(Path.Combine(ModuleDirectory, "lib/fmt-Release.lib"));
+        PublicAdditionalLibraries.Add(Path.Combine(ModuleDirectory, "lib/MIGINN.lib"));
+        PublicAdditionalLibraries.Add(Path.Combine(ModuleDirectory, "lib/tiny-cuda-nn.lib"));
+        PublicAdditionalLibraries.Add(Path.Combine(ModuleDirectory, "lib/fmt.lib"));
         
         // Find the CUDA library directory.
         string CUDAPath = Environment.GetEnvironmentVariable("CUDA_PATH");

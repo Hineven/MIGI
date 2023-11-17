@@ -26,7 +26,7 @@ public:
             auto OptimizerOptions = ExtraOptions["optimizer"];
             Loss.reset(tcnn::create_loss<PrecisionClass>(LossOptions));
             Optimizer.reset(tcnn::create_optimizer<PrecisionClass>(OptimizerOptions));
-            Network = std::make_shared<NetworkClass>(MLP.InNumInputs, MLP.InNumOutputs, EncodingOptions,
+            Network = std::make_shared<NetworkClass>(MLP.InNumInputDimensions, MLP.InNumOutputDimensions, EncodingOptions,
                                                      NetworkOptions);
             Trainer = std::make_shared<decltype(Trainer)::element_type>(Network, Optimizer, Loss);
         } catch(std::runtime_error & e) {

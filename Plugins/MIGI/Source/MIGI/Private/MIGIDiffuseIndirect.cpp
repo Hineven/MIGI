@@ -47,6 +47,10 @@ void MIGIRenderDiffuseIndirect(const FScene& Scene, const FViewInfo& ViewInfo, F
 				// Synchronize the NN input buffer.
 				auto Adapter = IMIGINNAdapter::GetInstance();
 				Adapter->SynchronizeToNN(RHICmdList);
+				// IMPORTANT: Flush queued RHI commands to the GPU.
+				// MIGINNInference() possibly allocates GPU memory, which results in the calling of cudaDeviceWaitIdle()
+				// Thus it's possible to run into a deadlock if the signal RHI command has not been submitted yet.
+				RHICmdList.SubmitCommandsHint();
 				// Schedule NN inference.
 				auto InferenceParams = MIGINNInferenceParams {
 					.InInputBufferOffset = 0,
@@ -55,6 +59,12 @@ void MIGIRenderDiffuseIndirect(const FScene& Scene, const FViewInfo& ViewInfo, F
 				};
 				MIGINNInference(InferenceParams);
 				// TODO input training data and train at the same time.
+				// auto TrainParams = MIGINNTrainNetworkParams {
+				// 	.InInputBufferOffset =
+				// 	.InLearningRate =
+				// 	.
+				// };
+				// MIGINNTrainNetwork(TraninParams);
 			}
 		);
 	}

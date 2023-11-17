@@ -147,8 +147,8 @@ void FMIGICUDAAdapterD3D12::Initialize_RenderThread (FRHICommandListImmediate & 
 			{"frobenius_normalization", true},
 		}},
 		{"encoding", {
-			{"otype", "OneBlob"},
-			{"n_bins", 32},
+			{"otype", "Frequency"},
+			{"n_frequencies", 12},
 		}},
 		{"network", {
 			{"otype", "FullyFusedMLP"},
@@ -163,8 +163,8 @@ void FMIGICUDAAdapterD3D12::Initialize_RenderThread (FRHICommandListImmediate & 
 	auto NetworkConfig = MIGINNNetworkConfig {
 		.Details = {
 			.MLP = {
-				.InNumInputs = 16,
-				.InNumOutputs =  16
+				.InNumInputDimensions = 4,
+				.InNumOutputDimensions = 4
 			}
 		},
 		.Type =  MIGINNNetworkType::eMLP
