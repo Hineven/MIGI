@@ -1,34 +1,64 @@
 ﻿/* This file implements several NN interactions.
  */
-
-
-#include "/Engine/Public/Platform.ush"
-
+#include "/Engine/Private/Common.ush"
 
 RWBuffer<float> NNInputBuffer;
 Buffer<float> NNOutputBuffer;
 
 RWTexture2D<float4> ColorBuffer;
-
+// The size of the training set per frame.
+uint NNTrainSampleSize;
 // The test param.
 float4 TestParam;
 
-[numthreads(1, 1, 1)]
-void NNInput ()
+[numthreads(THREAD_GROUP_SIZE_2D, THREAD_GROUP_SIZE_2D, 1)]
+void NNInput (uint3 DispatchThreadID : SV_DispatchThreadID)
 {
+	uint2 PixelCoord = uint2(DispatchThreadID.xy);
+	if(any(PixelCoord >= View.ViewRectMinAndSize.zw))
+	{
+		return;
+	}
+	uint PixelIndex = DispatchThreadID.x * View.ViewRectMinAndSize.z + DispatchThreadID.y;
 	// Fill the NNInputBuffer with TestParam.
-	NNInputBuffer[0] = TestParam.x;
-	NNInputBuffer[1] = TestParam.y;
-	NNInputBuffer[2] = TestParam.z;
-	NNInputBuffer[3] = TestParam.w;
+	// Try to query a linear gradient (along the X axis).
+	NNInputBuffer[PixelIndex*4 + 0] = float(PixelCoord.x) / View.ViewRectMinAndSize.z;
+	NNInputBuffer[PixelIndex*4 + 1] = float(PixelCoord.y) / View.ViewRectMinAndSize.w;
+	NNInputBuffer[PixelIndex*4 + 2] = 1.f;
+	NNInputBuffer[PixelIndex*4 + 3] = 1.f;
+
+	uint NNTrainDataInputOffset = View.ViewRectMinAndSize.z * View.ViewRectMinAndSize.w * NN_INPUT_WIDTH;
+	
+	// Fill the NNInputBuffer (training inputs) with TestParam.
+	NNInputBuffer[NNTrainDataInputOffset + PixelIndex.x*4 + 0] = float(PixelCoord.x) / View.ViewRectMinAndSize.z;
+	NNInputBuffer[NNTrainDataInputOffset + PixelIndex.x*4 + 1] = float(PixelCoord.y) / View.ViewRectMinAndSize.w;
+	NNInputBuffer[NNTrainDataInputOffset + PixelIndex.x*4 + 2] = 1.f;
+	NNInputBuffer[NNTrainDataInputOffset + PixelIndex.x*4 + 3] = 1.f;
+
+	uint NNTrainDataTargetOffset = NNTrainDataInputOffset + NNTrainSampleSize * NN_INPUT_WIDTH * 2;
+	// Fill the NNInputBuffer training outputs.
+	NNInputBuffer[NNTrainDataInputOffset + DispatchThreadID.x*4 + 0] = float(DispatchThreadID.x) / 256;
+	NNInputBuffer[NNTrainDataInputOffset + DispatchThreadID.x*4 + 1] = float(DispatchThreadID.x) / 256;
+	NNInputBuffer[1024*2 + DispatchThreadID.x*4 + 2] = float(DispatchThreadID.x) / 256;
+	NNInputBuffer[1024*2 + DispatchThreadID.x*4 + 3] = 1.f;
 }
 
-[numthreads(16, 16, 1)]
+[numthreads(THREAD_GROUP_SIZE_2D, THREAD_GROUP_SIZE_2D, 1)]
 void NNOutput (uint3 DispatchThreadID : SV_DispatchThreadID)
 {
 	// Calculate the pixel coordinates
 	uint2 PixelCoord = uint2(DispatchThreadID.xy);
+	if(any(PixelCoord >= View.ViewRectMinAndSize.zw))
+	{
+		return;
+	}
 	// Fill the corresponding color buffer pixel with NNOutputBuffer.
-	ColorBuffer[PixelCoord] = float4(NNOutputBuffer[0], NNOutputBuffer[1], NNOutputBuffer[2], NNOutputBuffer[3]);
+	ColorBuffer[PixelCoord] =
+		float4(
+			NNOutputBuffer[PixelCoord.x*4+0],
+			NNOutputBuffer[PixelCoord.x*4+1],
+			NNOutputBuffer[PixelCoord.x*4+2],
+			NNOutputBuffer[PixelCoord.x*4+3]
+		);
 }
 

@@ -13,6 +13,13 @@
 #include <tiny-cuda-nn/common.h>
 #include <tiny-cuda-nn/network.h>
 
+// For test purposes only
+__global__ void identity (const float * In, float * Out) {
+    size_t Idx = threadIdx.x + blockIdx.x * blockDim.x;
+    Out[Idx] = (sin(In[Idx]*12.f) + 1.f) / 2.f;
+}
+
+
 class MIGINNMLPCacheNetworkImpl {
 public:
     MIGINNMLPCacheNetworkImpl () = default;
@@ -47,6 +54,8 @@ public:
                 Network->output_width(), Params.InNumElements
         );
         Network->inference(GCUDAStream, InputMatrix, OutputMatrix);
+//        auto ncopyelement = Network->input_width() * Params.InNumElements;
+//        identity<<<ncopyelement / 32, 32, 0, GCUDAStream>>>(InputMatrix.data(), OutputMatrix.data());
         return MIGINNResultType::eSuccess;
     }
 

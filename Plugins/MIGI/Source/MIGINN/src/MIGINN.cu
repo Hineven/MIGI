@@ -163,8 +163,9 @@ MIGINNResultType MIGINNInitializeNeuralNetwork(const MIGINNNetworkConfig &Config
 
 
 MIGINNResultType MIGINNTrainNetwork(const MIGINNTrainNetworkParams &Params) {
-
-    return MIGINNResultType::eCUDAError;
+    if(GNetwork) {
+        return GNetwork->Train(Params);
+    } else return MIGINNResultType::eError;
 }
 
 MIGINNResultType MIGINNInference(const MIGINNInferenceParams &Params) {

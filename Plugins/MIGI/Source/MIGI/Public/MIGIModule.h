@@ -21,5 +21,6 @@ protected:
 	bool bModuleActive {false};
 	bool bAdapterActive {false};
 	bool bCUDAActive {false};
+	FDelegateHandle DiffuseIndirectPrepareRayTracingDelegateHandle {};
 	FDelegateHandle DiffuseIndirectDelegateHandle {};
 };

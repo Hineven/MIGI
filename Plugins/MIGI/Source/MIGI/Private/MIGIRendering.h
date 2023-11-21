@@ -19,4 +19,6 @@ protected:
 };
 
 
+void MIGIPrepareRayTracingDiffuseIndirect (const FViewInfo& View, TArray<FRHIRayTracingShader*>& OutRayGenShaders);
+
 void MIGIRenderDiffuseIndirect(const FScene& Scene, const FViewInfo& ViewInfo, FRDGBuilder& GraphBuilder, FGlobalIlluminationPluginResources & RenderResources) ;

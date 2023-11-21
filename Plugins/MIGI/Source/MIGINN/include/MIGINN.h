@@ -82,8 +82,6 @@ struct MIGINNTrainNetworkParams {
     size_t InInputBufferTargetOffset {};
     // Number of elements in the input buffer.
     uint32_t InNumElements {};
-    // Learning rate for the training.
-    float InLearningRate {};
 };
 struct MIGINNInferenceParams {
     // The actual inference input offset inside the input buffer.

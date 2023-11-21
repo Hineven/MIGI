@@ -42,6 +42,7 @@ bool FMIGIModule::ActivateMIGI()
 	
 	UE_LOG(MIGI, Display, TEXT("Activating..."));
 	// Register some delegates
+	DiffuseIndirectPrepareRayTracingDelegateHandle = FGlobalIlluminationPluginDelegates::PrepareRayTracing().AddStatic(&MIGIDiffuseIndirectPrepareRayTracing);
 	DiffuseIndirectDelegateHandle = FGlobalIlluminationPluginDelegates::RenderDiffuseIndirectLight().AddStatic(&MIGIRenderDiffuseIndirect);
 	
 	// Register a persistent uniform buffer view extension
@@ -64,6 +65,7 @@ void FMIGIModule::ShutdownModule()
 		
 		// Clear delegate bindings.
 		DiffuseIndirectDelegateHandle.Reset();
+		DiffuseIndirectPrepareRayTracingDelegateHandle.Reset();
 	}
 	// Clear adapters
 	IMIGINNAdapter::Clear();
