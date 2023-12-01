@@ -3,14 +3,6 @@
 #include "PathTracing.h"
 #include "HAL/IConsoleManager.h"
 #include "RHI.h"
-#include "PathTracingDenoiser.h"
-
-TAutoConsoleVariable<int32> CVarPathTracing(
-	TEXT("r.PathTracing"),
-	1,
-	TEXT("Enables the path tracing renderer (to guard the compilation of path tracer specific material permutations)"),
-	ECVF_RenderThreadSafe | ECVF_ReadOnly
-);
 
 #if RHI_RAYTRACING
 
@@ -25,7 +17,6 @@ TAutoConsoleVariable<int32> CVarPathTracing(
 #include "PathTracingDefinitions.h"
 #include "RayTracing/RayTracingMaterialHitShaders.h"
 #include "RayTracing/RayTracingDecals.h"
-#include "DecalRenderingCommon.h"
 #include "FogRendering.h"
 #include "GenerateMips.h"
 #include "HairStrands/HairStrandsData.h"
@@ -35,363 +26,8 @@ TAutoConsoleVariable<int32> CVarPathTracing(
 #include <limits>
 #include "PathTracingSpatialTemporalDenoising.h"
 
-TAutoConsoleVariable<int32> CVarPathTracingCompaction(
-	TEXT("r.PathTracing.Compaction"),
-	1,
-	TEXT("Enables path compaction to improve GPU occupancy for the path tracer (default: 1 (enabled))"),
-	ECVF_RenderThreadSafe
-);
-
-TAutoConsoleVariable<int32> CVarPathTracingIndirectDispatch(
-	TEXT("r.PathTracing.IndirectDispatch"),
-	0,
-	TEXT("Enables indirect dispatch (if supported by the hardware) for compacted path tracing (default: 0 (disabled))"),
-	ECVF_RenderThreadSafe
-);
-
-TAutoConsoleVariable<int32> CVarPathTracingFlushDispatch(
-	TEXT("r.PathTracing.FlushDispatch"),
-	2,
-	TEXT("Enables flushing of the command list after dispatch to reduce the likelyhood of TDRs on Windows (default: 2)\n")
-	TEXT("0: off\n")
-	TEXT("1: flush after each dispatch\n")
-	TEXT("2: flush after each tile\n"),
-	ECVF_RenderThreadSafe
-);
-
-TAutoConsoleVariable<int32> CVarPathTracingDispatchSize(
-	TEXT("r.PathTracing.DispatchSize"),
-	2048,
-	TEXT("Controls the tile size used when rendering the image. Reducing this value may prevent GPU timeouts for heavy renders. (default = 2048)"),
-	ECVF_RenderThreadSafe
-);
-
-TAutoConsoleVariable<int32> CVarPathTracingMaxBounces(
-	TEXT("r.PathTracing.MaxBounces"),
-	-1,
-	TEXT("Sets the maximum number of path tracing bounces (default = -1 (driven by postprocesing volume))"),
-	ECVF_RenderThreadSafe
-);
-
-TAutoConsoleVariable<int32> CVarPathTracingSamplesPerPixel(
-	TEXT("r.PathTracing.SamplesPerPixel"),
-	-1,
-	TEXT("Sets the maximum number of samples per pixel (default = -1 (driven by postprocesing volume))"),
-	ECVF_RenderThreadSafe
-);
-
-TAutoConsoleVariable<float> CVarPathTracingFilterWidth(
-	TEXT("r.PathTracing.FilterWidth"),
-	3.0,
-	TEXT("Sets the anti-aliasing filter width (default = 3.0 which corresponds to a gaussian with standard deviation of a 1/2 pixel)"),
-	ECVF_RenderThreadSafe
-);
-
-TAutoConsoleVariable<int32> CVarPathTracingMISMode(
-	TEXT("r.PathTracing.MISMode"),
-	2,
-	TEXT("Selects the sampling technique for light integration (default = 2 (MIS enabled))\n")
-	TEXT("0: Material sampling\n")
-	TEXT("1: Light sampling\n")
-	TEXT("2: MIS betwen material and light sampling (default)\n"),
-	ECVF_RenderThreadSafe
-);
-
-TAutoConsoleVariable<int32> CVarPathTracingVolumeMISMode(
-	TEXT("r.PathTracing.VolumeMISMode"),
-	1,
-	TEXT("Selects the sampling technique for volumetric integration of local lighting (default = 1)\n")
-	TEXT("0: Density sampling\n")
-	TEXT("1: Light sampling (default)\n"),
-	ECVF_RenderThreadSafe
-);
-
-TAutoConsoleVariable<int32> CVarPathTracingMaxRaymarchSteps(
-	TEXT("r.PathTracing.MaxRaymarchSteps"),
-	256,
-	TEXT("Upper limit on the number of ray marching steps in volumes. This limit should not be hit in most cases, but raising it can reduce bias in case it is. (default = 256)."),
-	ECVF_RenderThreadSafe
-);
-
-TAutoConsoleVariable<int32> CVarPathTracingMISCompensation(
-	TEXT("r.PathTracing.MISCompensation"),
-	1,
-	TEXT("Activates MIS compensation for skylight importance sampling. (default = 1 (enabled))\n")
-	TEXT("This option only takes effect when r.PathTracing.MISMode = 2\n"),
-	ECVF_RenderThreadSafe
-);
-
-TAutoConsoleVariable<int32> CVarPathTracingSkylightCaching(
-	TEXT("r.PathTracing.SkylightCaching"),
-	1,
-	TEXT("Attempts to re-use skylight data between frames. (default = 1 (enabled))\n")
-	TEXT("When set to 0, the skylight texture and importance samping data will be regenerated every frame. This is mainly intended as a benchmarking and debugging aid\n"),
-	ECVF_RenderThreadSafe
-);
-
-TAutoConsoleVariable<int32> CVarPathTracingVisibleLights(
-	TEXT("r.PathTracing.VisibleLights"),
-	0,
-	TEXT("Should light sources be visible to camera rays? (default = 0 (off))\n")
-	TEXT("0: Hide lights from camera rays (default)\n")
-	TEXT("1: Make all lights visible to camera\n")
-	TEXT("2: Make skydome only visible to camera\n"),
-	ECVF_RenderThreadSafe
-);
-
-TAutoConsoleVariable<int32> CVarPathTracingMaxSSSBounces(
-	TEXT("r.PathTracing.MaxSSSBounces"),
-	256,
-	TEXT("Sets the maximum number of bounces inside subsurface materials. Lowering this value can make subsurface scattering render too dim, while setting it too high can cause long render times.  (default = 256)"),
-	ECVF_RenderThreadSafe
-);
-
-TAutoConsoleVariable<float> CVarPathTracingSSSGuidingRatio(
-	TEXT("r.PathTracing.SSSGuidingRatio"),
-	0.5f,
-	TEXT("Sets the ratio between classical random walks and walks guided towards the surface. A value of 0.0 corresponds to a purely classical random walk, while a value of 1.0 is fully guided towards the surface (at the expense of fireflies in non-flat regions of the model. (default = 0.5)"),
-	ECVF_RenderThreadSafe
-);
-
-
-TAutoConsoleVariable<float> CVarPathTracingMaxPathIntensity(
-	TEXT("r.PathTracing.MaxPathIntensity"),
-	-1,
-	TEXT("When positive, light paths greater that this amount are clamped to prevent fireflies (default = -1 (driven by postprocesing volume))"),
-	ECVF_RenderThreadSafe
-);
-
-TAutoConsoleVariable<int32> CVarPathTracingApproximateCaustics(
-	TEXT("r.PathTracing.ApproximateCaustics"),
-	1,
-	TEXT("When non-zero, the path tracer will approximate caustic paths to reduce noise. This reduces speckles and noise from low-roughness glass and metals. (default = 1 (enabled))"),
-	ECVF_RenderThreadSafe
-);
-
-TAutoConsoleVariable<int32> CVarPathTracingEnableEmissive(
-	TEXT("r.PathTracing.EnableEmissive"),
-	-1,
-	TEXT("Indicates if emissive materials should contribute to scene lighting (default = -1 (driven by postprocesing volume)"),
-	ECVF_RenderThreadSafe
-);
-
-TAutoConsoleVariable<int32> CVarPathTracingEnableCameraBackfaceCulling(
-	TEXT("r.PathTracing.EnableCameraBackfaceCulling"),
-	1,
-	TEXT("When non-zero, the path tracer will skip over backfacing triangles when tracing primary rays from the camera. (default = 1 (enabled))"),
-	ECVF_RenderThreadSafe
-);
-
-TAutoConsoleVariable<int32> CVarPathTracingAtmosphereOpticalDepthLutResolution(
-	TEXT("r.PathTracing.AtmosphereOpticalDepthLUTResolution"),
-	512,
-	TEXT("Size of the square lookup texture used for transmittance calculations by the path tracer in reference atmosphere mode.  (default = 512)"),
-	ECVF_RenderThreadSafe
-);
-
-TAutoConsoleVariable<int32> CVarPathTracingAtmosphereOpticalDepthLutNumSamples(
-	TEXT("r.PathTracing.AtmosphereOpticalDepthLUTNumSamples"),
-	16384,
-	TEXT("Number of ray marching samples used when building the transmittance lookup texture used for transmittance calculations by the path tracer in reference atmosphere mode.  (default = 16384)"),
-	ECVF_RenderThreadSafe
-);
-
-TAutoConsoleVariable<int32> CVarPathTracingFrameIndependentTemporalSeed(
-	TEXT("r.PathTracing.FrameIndependentTemporalSeed"),
-	1,
-	TEXT("Indicates to use different temporal seed for each sample across frames rather than resetting the sequence at the start of each frame\n")
-	TEXT("0: off\n")
-	TEXT("1: on (default)\n"),
-	ECVF_RenderThreadSafe
-);
-
-// See PATHTRACER_SAMPLER_* defines
-TAutoConsoleVariable<int32> CVarPathTracingSamplerType(
-	TEXT("r.PathTracing.SamplerType"),
-	PATHTRACER_SAMPLER_DEFAULT,
-	TEXT("Controls the way the path tracer generates its random numbers\n")
-	TEXT("0: use a different high quality random sequence per pixel (default)\n")
-	TEXT("1: optimize the random sequence across pixels to reduce visible error at the target sample count\n"),
-	ECVF_RenderThreadSafe
-);
-
-#if WITH_MGPU
-TAutoConsoleVariable<int32> CVarPathTracingMultiGPU(
-	TEXT("r.PathTracing.MultiGPU"),
-	0,
-	TEXT("Run the path tracer using all available GPUs when enabled (default = 0)\n")
-	TEXT("Using this functionality in the editor requires -MaxGPUCount=N setting on the command line"),
-	ECVF_RenderThreadSafe
-);
-
-TAutoConsoleVariable<bool> CVarPathTracingAdjustMultiGPUPasses(
-	TEXT("r.PathTracing.AdjustMultiGPUPasses"),
-	true,
-	TEXT("Run extra passes per frame when multiple GPUs are active, to improve perf scaling as GPUs are added (default = true)\n"),
-	ECVF_RenderThreadSafe
-);
-#endif  // WITH_MGPU
-
-TAutoConsoleVariable<int32> CVarPathTracingWiperMode(
-	TEXT("r.PathTracing.WiperMode"),
-	0,
-	TEXT("Enables wiper mode to render using the path tracer only in a region of the screen for debugging purposes (default = 0, wiper mode disabled)"),
-	ECVF_RenderThreadSafe 
-);
-
-TAutoConsoleVariable<int32> CVarPathTracingProgressDisplay(
-	TEXT("r.PathTracing.ProgressDisplay"),
-	1,
-	TEXT("Enables an in-frame display of progress towards the defined sample per pixel limit. The indicator dissapears when the maximum is reached and sample accumulation has stopped (default = 1)\n")
-	TEXT("0: off\n")
-	TEXT("1: on (default)\n"),
-	ECVF_RenderThreadSafe
-);
-
-TAutoConsoleVariable<int32> CVarPathTracingLightGridResolution(
-	TEXT("r.PathTracing.LightGridResolution"),
-	256,
-	TEXT("Controls the resolution of the 2D light grid used to cull irrelevant lights from lighting calculations (default = 256)\n"),
-	ECVF_RenderThreadSafe
-);
-
-TAutoConsoleVariable<int32> CVarPathTracingLightGridMaxCount(
-	TEXT("r.PathTracing.LightGridMaxCount"),
-	128,
-	TEXT("Controls the maximum number of lights per cell in the 2D light grid. The minimum of this value and the number of lights in the scene is used. (default = 128)\n"),
-	ECVF_RenderThreadSafe
-);
-
-TAutoConsoleVariable<int32> CVarPathTracingLightGridVisualize(
-	TEXT("r.PathTracing.LightGridVisualize"),
-	0,
-	TEXT("Enables a visualization mode of the light grid density where red indicates the maximum light count has been reached (default = 0)\n")
-	TEXT("0: off (default)\n")
-	TEXT("1: light count heatmap (red - close to overflow, increase r.PathTracing.LightGridMaxCount)\n")
-	TEXT("2: unique light lists (colors are a function of which lights occupy each cell)\n")
-	TEXT("3: area light visualization (green: point light sources only, blue: some area light sources)\n"),
-	ECVF_RenderThreadSafe
-);
-
-TAutoConsoleVariable<int32> CVarPathTracingDecalGridVisualize(
-	TEXT("r.PathTracing.DecalGrid.Visualize"),
-	0,
-	TEXT("Enables a visualization mode of the decal grid density where red indicates the maximum decal count has been reached (default = 0)\n")
-	TEXT("0: off (default)\n")
-	TEXT("1: decal count heatmap (red - close to overflow, increase r.RayTracing.DecalGrid.MaxCount)\n")
-	TEXT("2: unique decal lists (colors are a function of which decals occupy each cell)\n"),
-	ECVF_RenderThreadSafe
-);
-
-TAutoConsoleVariable<int32> CVarPathTracingUseDBuffer(
-	TEXT("r.PathTracing.UseDBuffer"),
-	1,
-	TEXT("Whether to support DBuffer functionality (default=1)"),
-	ECVF_RenderThreadSafe
-);
-
-TAutoConsoleVariable<float> CVarPathTracingDecalRoughnessCutoff(
-	TEXT("r.PathTracing.DecalRoughnessCutoff"),
-	0.15f,
-	TEXT("Do not evaluate decals beyond this roughness level to improve performance (default=0.15)"),
-	ECVF_RenderThreadSafe
-);
-
-TAutoConsoleVariable<float> CVarPathTracingMeshDecalRoughnessCutoff(
-	TEXT("r.PathTracing.MeshDecalRoughnessCutoff"),
-	0.15f,
-	TEXT("Do not evaluate mesh decals beyond this roughness level to improve performance (default=0.15)"),
-	ECVF_RenderThreadSafe
-);
-
-TAutoConsoleVariable<float> CVarPathTracingMeshDecalBias(
-	TEXT("r.PathTracing.MeshDecalBias"),
-	1.0f,
-	TEXT("Bias applied to mesh decal rays to avoid intersection with geometry (default = 1.0f)"),
-	ECVF_RenderThreadSafe
-);
-
-TAutoConsoleVariable<int32> CVarPathTracingLightFunctionColor(
-	TEXT("r.PathTracing.LightFunctionColor"),
-	0,
-	TEXT("Enables light functions to be colored instead of greyscale (default = 0)\n")
-	TEXT("0: off (default)\n")
-	TEXT("1: on (light function material output is used directly instead of converting to greyscale)\n"),
-	ECVF_RenderThreadSafe
-);
-
-TAutoConsoleVariable<int32> CVarPathTracingHeterogeneousVolumes(
-	TEXT("r.PathTracing.HeterogeneousVolumes"),
-	0,
-	TEXT("Enables heterogeneous volumes (default = 0)\n")
-	TEXT("0: off (default)\n")
-	TEXT("1: on (combined frustum + ortho grids)\n")
-	TEXT("2: frustum-only grid\n")
-	TEXT("3: ortho-only grid\n"),
-	ECVF_RenderThreadSafe
-);
-
-TAutoConsoleVariable<int32> CVarPathTracingHeterogeneousVolumesRebuildEveryFrame(
-	TEXT("r.PathTracing.HeterogeneousVolumes.RebuildEveryFrame"),
-	1,
-	TEXT("Rebuilds volumetric acceleration structures every frame (default = 1)\n"),
-	ECVF_RenderThreadSafe
-);
-
-TAutoConsoleVariable<int32> CVarPathTracingCameraMediumTracking(
-	TEXT("r.PathTracing.CameraMediumTracking"),
-	1,
-	TEXT("Enables automatic camera medium tracking to detect when a camera starts inside water or solid glass automatically (default = 1)\n")
-	TEXT("0: off\n")
-	TEXT("1: on (default)\n"),
-	ECVF_RenderThreadSafe
-);
-
-TAutoConsoleVariable<int32> CVarPathTracingOutputPostProcessResources(
-	TEXT("r.PathTracing.OutputPostProcessResources"),
-	1,
-	TEXT("Output the pathtracing resources to the postprocess passes\n")
-	TEXT("0: off\n")
-	TEXT("1: on (Buffers including, raw/denoised radiance, albedo, normal, and variance)\n"),
-	ECVF_RenderThreadSafe
-);
-
-TAutoConsoleVariable<int32> CVarPathTracingSubstrateUseSimplifiedMaterial(
-	TEXT("r.PathTracing.Substrate.UseSimplifiedMaterials"),
-	0,
-	TEXT("Instead of evaluating all layers, use an optimized material in which all slabs have been merged. This is mainly intended for debugging and requires r.PathTracing.Substrate.CompileSimplifiedMaterials to be true.\n")
-	TEXT("0: off (default)\n")
-	TEXT("1: on\n"),
-	ECVF_RenderThreadSafe
-);
-
-TAutoConsoleVariable<int32> CVarPathTracingSubstrateCompileSimplifiedMaterial(
-	TEXT("r.PathTracing.Substrate.CompileSimplifiedMaterials"),
-	0,
-	TEXT("Compile a simplified representation of Substrate materials which merges all slabs into one. This is mainly intended for debugging purposes. Enabling this double the number of path tracing shader permutations.\n")
-	TEXT("0: off (default)\n")
-	TEXT("1: on\n"),
-	ECVF_RenderThreadSafe | ECVF_ReadOnly
-);
-
-TAutoConsoleVariable<int32> CVarpathTracingOverrideDepth(
-	TEXT("r.PathTracing.Override.Depth"),
-	1,
-	TEXT("Override the scene depth z by the path tracing depth z")
-	TEXT("0: off\n")
-	TEXT("1: On (Default, translucent materials have better DOF with the post-process DOF.)\n"),
-	ECVF_RenderThreadSafe
-);
-
-TAutoConsoleVariable<int32> CVarPathTracingUseAnalyticTransmittance(
-	TEXT("r.PathTracing.UseAnalyticTransmittance"),
-	-1,
-	TEXT("Determines use of analytical or null-tracking estimation when evaluating transmittance\n")
-	TEXT("-1: uses null-tracking estimation if heterogeneous volumes are present, or analytical estimation otherwise (default)\n")
-	TEXT("0: off (uses null-tracking estimation, instead)\n")
-	TEXT("1: on (uses analytical estimation)\n"),
-	ECVF_RenderThreadSafe
-);
+// My hack to get internal CVars of the unreal path tracer.
+#include "MIGIPathTracingCVar_Hack.h"
 
 BEGIN_SHADER_PARAMETER_STRUCT(FPathTracingData, )
 	SHADER_PARAMETER(float, BlendFactor)
@@ -496,8 +132,8 @@ struct FAtmosphereConfig
 	FAtmosphereConfig() = default;
 	FAtmosphereConfig(const FAtmosphereUniformShaderParameters& Parameters) :
 		AtmoParameters(Parameters),
-		NumSamples(CVarPathTracingAtmosphereOpticalDepthLutNumSamples.GetValueOnRenderThread()),
-		Resolution(CVarPathTracingAtmosphereOpticalDepthLutResolution.GetValueOnRenderThread()) {}
+		NumSamples(16384),//CVarPathTracingAtmosphereOpticalDepthLutNumSamples->GetValueOnRenderThread()),
+		Resolution(512)/*CVarPathTracingAtmosphereOpticalDepthLutResolution->GetValueOnRenderThread())*/ {}
 
 	bool IsDifferent(const FAtmosphereConfig& Other) const
 	{
@@ -573,7 +209,7 @@ namespace PathTracing
 
 static uint32 EvalUseAnalyticTransmittance(const FViewInfo& View)
 {
-	int32 UseAnalyticTransmittance = CVarPathTracingUseAnalyticTransmittance.GetValueOnRenderThread();
+	int32 UseAnalyticTransmittance = CVarPathTracingUseAnalyticTransmittance->GetValueOnRenderThread();
 	if (UseAnalyticTransmittance < 0)
 	{
 		UseAnalyticTransmittance = !ShouldRenderHeterogeneousVolumesForView(View);
@@ -588,30 +224,30 @@ static void PreparePathTracingData(const FScene* Scene, const FViewInfo& View, F
 	const FFinalPostProcessSettings& PPV = View.FinalPostProcessSettings;
 	const FEngineShowFlags& ShowFlags = View.Family->EngineShowFlags;
 
-	int32 MaxBounces = CVarPathTracingMaxBounces.GetValueOnRenderThread();
+	int32 MaxBounces = CVarPathTracingMaxBounces->GetValueOnRenderThread();
 	if (MaxBounces < 0)
 	{
 		MaxBounces = PPV.PathTracingMaxBounces;
 	}
 
 	PathTracingData.MaxBounces = MaxBounces;
-	PathTracingData.MaxSSSBounces = ShowFlags.SubsurfaceScattering ? CVarPathTracingMaxSSSBounces.GetValueOnRenderThread() : 0;
-	PathTracingData.SSSGuidingRatio = FMath::Clamp(CVarPathTracingSSSGuidingRatio.GetValueOnRenderThread(), 0.0f, 1.0f);
+	PathTracingData.MaxSSSBounces = ShowFlags.SubsurfaceScattering ? CVarPathTracingMaxSSSBounces->GetValueOnRenderThread() : 0;
+	PathTracingData.SSSGuidingRatio = FMath::Clamp(CVarPathTracingSSSGuidingRatio->GetValueOnRenderThread(), 0.0f, 1.0f);
 	PathTracingData.MaxNormalBias = GetRaytracingMaxNormalBias();
-	PathTracingData.MISMode = CVarPathTracingMISMode.GetValueOnRenderThread();
-	PathTracingData.VolumeMISMode = CVarPathTracingVolumeMISMode.GetValueOnRenderThread();
-	PathTracingData.MaxPathIntensity = CVarPathTracingMaxPathIntensity.GetValueOnRenderThread();
+	PathTracingData.MISMode = CVarPathTracingMISMode->GetValueOnRenderThread();
+	PathTracingData.VolumeMISMode = CVarPathTracingVolumeMISMode->GetValueOnRenderThread();
+	PathTracingData.MaxPathIntensity = CVarPathTracingMaxPathIntensity->GetValueOnRenderThread();
 	if (PathTracingData.MaxPathIntensity <= 0)
 	{
 		// cvar clamp disabled, use PPV exposure value instad
 		PathTracingData.MaxPathIntensity = FMath::Pow(2.0f, PPV.PathTracingMaxPathExposure);
 	}
-	PathTracingData.ApproximateCaustics = CVarPathTracingApproximateCaustics.GetValueOnRenderThread();
-	PathTracingData.EnableCameraBackfaceCulling = CVarPathTracingEnableCameraBackfaceCulling.GetValueOnRenderThread();
-	PathTracingData.SamplerType = CVarPathTracingSamplerType.GetValueOnRenderThread();
-	PathTracingData.VisualizeLightGrid = CVarPathTracingLightGridVisualize.GetValueOnRenderThread();
-	PathTracingData.VisualizeDecalGrid = CVarPathTracingDecalGridVisualize.GetValueOnRenderThread();
-	PathTracingData.FilterWidth = CVarPathTracingFilterWidth.GetValueOnRenderThread();
+	PathTracingData.ApproximateCaustics = CVarPathTracingApproximateCaustics->GetValueOnRenderThread();
+	PathTracingData.EnableCameraBackfaceCulling = CVarPathTracingEnableCameraBackfaceCulling->GetValueOnRenderThread();
+	PathTracingData.SamplerType = CVarPathTracingSamplerType->GetValueOnRenderThread();
+	PathTracingData.VisualizeLightGrid = CVarPathTracingLightGridVisualize->GetValueOnRenderThread();
+	PathTracingData.VisualizeDecalGrid = CVarPathTracingDecalGridVisualize->GetValueOnRenderThread();
+	PathTracingData.FilterWidth = CVarPathTracingFilterWidth->GetValueOnRenderThread();
 	PathTracingData.CameraFocusDistance = 0;
 	PathTracingData.CameraLensRadius = FVector2f::ZeroVector;
 	if (ShowFlags.DepthOfField &&
@@ -637,16 +273,16 @@ static void PreparePathTracingData(const FScene* Scene, const FViewInfo& View, F
 		&& (Scene->ExponentialFogs[0].FogData[0].Density > 0 ||
 			Scene->ExponentialFogs[0].FogData[1].Density > 0);
 
-	PathTracingData.EnableHeterogeneousVolumes = CVarPathTracingHeterogeneousVolumes.GetValueOnRenderThread();
+	PathTracingData.EnableHeterogeneousVolumes = CVarPathTracingHeterogeneousVolumes->GetValueOnRenderThread();
 	PathTracingData.UseAnalyticTransmittance = EvalUseAnalyticTransmittance(View);
-	PathTracingData.EnableDBuffer = CVarPathTracingUseDBuffer.GetValueOnRenderThread();
+	PathTracingData.EnableDBuffer = CVarPathTracingUseDBuffer->GetValueOnRenderThread();
 
-	PathTracingData.DecalRoughnessCutoff = PathTracing::UsesDecals(*View.Family) && View.bHasRayTracingDecals ? CVarPathTracingDecalRoughnessCutoff.GetValueOnRenderThread() : -1.0f;
+	PathTracingData.DecalRoughnessCutoff = PathTracing::UsesDecals(*View.Family) && View.bHasRayTracingDecals ? CVarPathTracingDecalRoughnessCutoff->GetValueOnRenderThread() : -1.0f;
 
-	PathTracingData.MeshDecalRoughnessCutoff = PathTracing::UsesDecals(*View.Family) && Scene->RayTracingScene.GetRHIRayTracingScene()->GetInitializer().NumNativeInstancesPerLayer[(uint32)ERayTracingSceneLayer::Decals] > 0 ? CVarPathTracingMeshDecalRoughnessCutoff.GetValueOnRenderThread() : -1.0f;
-	PathTracingData.MeshDecalBias = CVarPathTracingMeshDecalBias.GetValueOnRenderThread();
+	PathTracingData.MeshDecalRoughnessCutoff = PathTracing::UsesDecals(*View.Family) && Scene->RayTracingScene.GetRHIRayTracingScene()->GetInitializer().NumNativeInstancesPerLayer[(uint32)ERayTracingSceneLayer::Decals] > 0 ? CVarPathTracingMeshDecalRoughnessCutoff->GetValueOnRenderThread() : -1.0f;
+	PathTracingData.MeshDecalBias = CVarPathTracingMeshDecalBias->GetValueOnRenderThread();
 
-	PathTracingData.MaxRaymarchSteps = CVarPathTracingMaxRaymarchSteps.GetValueOnRenderThread();
+	PathTracingData.MaxRaymarchSteps = CVarPathTracingMaxRaymarchSteps->GetValueOnRenderThread();
 
 	// NOTE: Diffuse and Specular show flags also modify the override colors, but we prefer to tie those to the lighting contribution mechanism below which is more principled
 	PathTracingData.ApplyDiffuseSpecularOverrides =
@@ -665,7 +301,7 @@ static void PreparePathTracingData(const FScene* Scene, const FViewInfo& View, F
 	PathTracingData.EnabledIndirectLightingContributions = 0;
 	if (ShowFlags.GlobalIllumination != 0)
 	{
-		const bool bEnableEmissive = CVarPathTracingEnableEmissive.GetValueOnRenderThread() != 0;
+		const bool bEnableEmissive = CVarPathTracingEnableEmissive->GetValueOnRenderThread() != 0;
 		PathTracingData.EnabledIndirectLightingContributions |= (PPV.PathTracingIncludeIndirectEmissive != 0 && bEnableEmissive        ) ? PATHTRACER_CONTRIBUTION_EMISSIVE : 0;
 		PathTracingData.EnabledIndirectLightingContributions |= (PPV.PathTracingIncludeIndirectDiffuse  != 0 && ShowFlags.Diffuse  != 0) ? PATHTRACER_CONTRIBUTION_DIFFUSE  : 0;
 		PathTracingData.EnabledIndirectLightingContributions |= (PPV.PathTracingIncludeIndirectSpecular != 0 && ShowFlags.Specular != 0) ? PATHTRACER_CONTRIBUTION_SPECULAR : 0;
@@ -677,7 +313,7 @@ static bool ShouldCompilePathTracingShadersForProject(EShaderPlatform ShaderPlat
 {
 	return ShouldCompileRayTracingShadersForProject(ShaderPlatform) &&
 			FDataDrivenShaderPlatformInfo::GetSupportsPathTracing(ShaderPlatform) &&
-			CVarPathTracing.GetValueOnAnyThread() != 0;
+			CVarPathTracing->GetValueOnAnyThread() != 0;
 }
 
 static bool ShouldCompileGPULightmassShadersForProject(EShaderPlatform ShaderPlatform)
@@ -1128,7 +764,7 @@ static TUniformBufferRef<FLightFunctionParametersPathTracing> CreateLightFunctio
 		LightSceneInfo->Proxy->GetLightFunctionDisabledBrightness(),
 		bRenderingPreviewShadowIndicator ? 1.0f : 0.0f);
 
-	LightFunctionParameters.EnableColoredLightFunctions = CVarPathTracingLightFunctionColor.GetValueOnRenderThread();
+	LightFunctionParameters.EnableColoredLightFunctions = CVarPathTracingLightFunctionColor->GetValueOnRenderThread();
 
 	return CreateUniformBufferImmediate(LightFunctionParameters, Usage);
 }
@@ -1335,7 +971,7 @@ public:
 		}
 		else
 		{
-			if (SimplifyStrata && (!Strata::IsStrataEnabled() || CVarPathTracingSubstrateCompileSimplifiedMaterial.GetValueOnAnyThread() == 0))
+			if (SimplifyStrata && (!Strata::IsStrataEnabled() || CVarPathTracingSubstrateCompileSimplifiedMaterial->GetValueOnAnyThread() == 0))
 			{
 				// don't compile the extra strata permutation if:
 				//    Substrate is not enabled on this project
@@ -1485,6 +1121,39 @@ FRHIRayTracingShader* GetGPULightmassDefaultHiddenHitShader(const FGlobalShaderM
 	return ShaderMap->GetShader<FGPULightmassDefaultHiddenHitGroup>().GetRayTracingShader();
 }
 
+// TODO use FMIGIViewExtension to track these.
+TArray<TPair<uint32, FPathTracingState*> > GPathTracingStates;
+
+TRefCountPtr<IPooledRenderTarget> GSceneSkylightTexture;
+TRefCountPtr<IPooledRenderTarget> GSceneSkylightPdf;
+
+FLinearColor GSceneSkylightColor;
+
+static bool IsViewHasPathTracingState (const FViewInfo & View) {
+	for(auto & e : GPathTracingStates)
+	{
+		if(e.Key == View.GetViewKey())
+		{
+			return true;
+		}
+	}
+	return false;
+}
+
+static FPathTracingState * GetViewPathTracingState(const FViewInfo & View) {
+	for(auto & e : GPathTracingStates)
+	{
+		if(e.Key == View.GetViewKey())
+		{
+			return e.Value;
+		}
+	}
+	auto PathTracingState = new FPathTracingState;
+	GPathTracingStates.Emplace(View.GetViewKey(), PathTracingState);
+	return PathTracingState;
+}
+
+
 bool FRayTracingMeshProcessor::ProcessPathTracing(
 	const FMeshBatch& RESTRICT MeshBatch,
 	uint64 BatchElementMask,
@@ -1508,8 +1177,8 @@ bool FRayTracingMeshProcessor::ProcessPathTracing(
 			{
 				// In order to use Substrate simplified materials, strata has to be enabled, we have to have _compiled_ the extra permutations _and_ the runtime toggle must be true
 				const bool bUseSimplifiedMaterial = Strata::IsStrataEnabled() &&
-					CVarPathTracingSubstrateCompileSimplifiedMaterial.GetValueOnRenderThread() != 0 &&
-					CVarPathTracingSubstrateUseSimplifiedMaterial.GetValueOnRenderThread() != 0;
+					CVarPathTracingSubstrateCompileSimplifiedMaterial->GetValueOnRenderThread() != 0 &&
+					CVarPathTracingSubstrateUseSimplifiedMaterial->GetValueOnRenderThread() != 0;
 				if (NeedsAnyHitShader(MaterialResource))
 				{
 					if (bUseSimplifiedMaterial)
@@ -1701,9 +1370,9 @@ bool PrepareSkyTexture(FRDGBuilder& GraphBuilder, FScene* Scene, const FViewInfo
 	}
 
 	// should we remember the skylight prep for the next frame?
-	const bool IsSkylightCachingEnabled = CVarPathTracingSkylightCaching.GetValueOnAnyThread() != 0;
+	const bool IsSkylightCachingEnabled = CVarPathTracingSkylightCaching->GetValueOnAnyThread() != 0;
 	FLinearColor SkyColor = Scene->SkyLight->GetEffectiveLightColor();
-	const bool bSkylightColorChanged = SkyColor != Scene->PathTracingSkylightColor;
+	const bool bSkylightColorChanged = SkyColor != GSkyColor;
 	if (!IsSkylightCachingEnabled || bSkylightColorChanged)
 	{
 		// we don't want any caching (or the light color changed)
@@ -1780,9 +1449,9 @@ RENDERER_API void PrepareLightGrid(FRDGBuilder& GraphBuilder, ERHIFeatureLevel::
 			LightGridParameters->SceneLightsTranslatedBoundMax = FVector3f::Max(LightGridParameters->SceneLightsTranslatedBoundMax, Light.TranslatedBoundMax);
 		}
 
-		const uint32 Resolution = FMath::RoundUpToPowerOfTwo(CVarPathTracingLightGridResolution.GetValueOnRenderThread());
+		const uint32 Resolution = FMath::RoundUpToPowerOfTwo(CVarPathTracingLightGridResolution->GetValueOnRenderThread());
 		const uint32 MaxCount = FMath::Clamp(
-			CVarPathTracingLightGridMaxCount.GetValueOnRenderThread(),
+			CVarPathTracingLightGridMaxCount->GetValueOnRenderThread(),
 			1,
 			FMath::Min(NumFiniteLights, RAY_TRACING_LIGHT_COUNT_MAXIMUM)
 		);
@@ -1906,7 +1575,7 @@ void SetLightParameters(FRDGBuilder& GraphBuilder, FPathTracingRG::FParameters* 
 		DestLight.MissShaderIndex = 0;
 		DestLight.TranslatedBoundMin = FVector3f(-Inf, -Inf, -Inf);
 		DestLight.TranslatedBoundMax = FVector3f( Inf,  Inf,  Inf);
-		if (Scene->SkyLight->bRealTimeCaptureEnabled || CVarPathTracingVisibleLights.GetValueOnRenderThread() == 2)
+		if (Scene->SkyLight->bRealTimeCaptureEnabled || CVarPathTracingVisibleLights->GetValueOnRenderThread() == 2)
 		{
 			// When using the realtime capture system, always make the skylight visible
 			// because this is our only way of "seeing" the atmo/clouds at the moment
@@ -1977,8 +1646,6 @@ void SetLightParameters(FRDGBuilder& GraphBuilder, FPathTracingRG::FParameters* 
 	}
 
 	uint32 NumInfiniteLights = NumLights;
-
-	int32 NextRectTextureIndex = 0;
 
 	const FRayTracingLightFunctionMap* RayTracingLightFunctionMap = GraphBuilder.Blackboard.Get<FRayTracingLightFunctionMap>();
 	for (auto Light : Scene->Lights)
@@ -2130,7 +1797,7 @@ void SetLightParameters(FRDGBuilder& GraphBuilder, FPathTracingRG::FParameters* 
 		PassParameters->SceneLights = GraphBuilder.CreateSRV(FRDGBufferSRVDesc(CreateStructuredBuffer(GraphBuilder, TEXT("PathTracer.LightsBuffer"), sizeof(FPathTracingLight), NumCopyLights, Lights, DataSize, ERDGInitialDataFlags::NoCopy)));
 	}
 
-	if (CVarPathTracingVisibleLights.GetValueOnRenderThread() == 1)
+	if (CVarPathTracingVisibleLights->GetValueOnRenderThread() == 1)
 	{
 		// make all lights in the scene visible
 		PassParameters->SceneVisibleLightCount = PassParameters->SceneLightCount;
@@ -2164,7 +1831,7 @@ IMPLEMENT_SHADER_TYPE(, FPathTracingCompositorPS, TEXT("/Engine/Private/PathTrac
 
 static FPathTracingRG::FPermutationDomain GetPathTracingRGPermutation(const FScene& Scene)
 {
-	const int CompactionType = CVarPathTracingCompaction.GetValueOnRenderThread();
+	const int CompactionType = CVarPathTracingCompaction->GetValueOnRenderThread();
 	const bool bHasComplexSpecialRenderPath = Strata::IsStrataEnabled() && Scene.StrataSceneData.bUsesComplexSpecialRenderPath;
 
 	FPathTracingRG::FPermutationDomain Out;
@@ -2173,13 +1840,17 @@ static FPathTracingRG::FPermutationDomain GetPathTracingRGPermutation(const FSce
 	return Out;
 }
 
-void PreparePathTracing(const FSceneViewFamily& ViewFamily, const FScene& Scene, TArray<FRHIRayTracingShader*>& OutRayGenShaders)
+void MIGIPreparePathTracing(const FViewInfo & ViewInfo, TArray<FRHIRayTracingShader*>& OutRayGenShaders)
 {
+	const FSceneViewFamily& ViewFamily = *ViewInfo.Family;
+	const FScene * ScenePtr = dynamic_cast<FScene*>(ViewFamily.Scene);
+	check(ScenePtr);
+	const FScene & Scene = *ScenePtr;
 	if (ViewFamily.EngineShowFlags.PathTracing
 		&& ShouldCompilePathTracingShadersForProject(ViewFamily.GetShaderPlatform()))
 	{
 		// Declare all RayGen shaders that require material closest hit shaders to be bound
-		const int CompactionType = CVarPathTracingCompaction.GetValueOnRenderThread();
+		const int CompactionType = CVarPathTracingCompaction->GetValueOnRenderThread();
 		FPathTracingRG::FPermutationDomain PermutationVector = GetPathTracingRGPermutation(Scene);
 		{
 			auto RayGenShader = GetGlobalShaderMap(ViewFamily.GetShaderPlatform())->GetShader<FPathTracingRG>(PermutationVector);
@@ -2193,9 +1864,9 @@ void PreparePathTracing(const FSceneViewFamily& ViewFamily, const FScene& Scene,
 	}
 }
 
-void FSceneViewState::PathTracingInvalidate(bool InvalidateAnimationStates)
+void PathTracingInvalidate(const FViewInfo & View, bool InvalidateAnimationStates = true)
 {
-	FPathTracingState* State = PathTracingState.Get();
+	FPathTracingState* State = GetViewPathTracingState(View);
 	if (State)
 	{
 		
@@ -2218,16 +1889,6 @@ void FSceneViewState::PathTracingInvalidate(bool InvalidateAnimationStates)
 	}
 }
 
-uint32 FSceneViewState::GetPathTracingSampleIndex() const {
-	const FPathTracingState* State = PathTracingState.Get();
-	return State ? State->SampleIndex : 0;
-}
-
-uint32 FSceneViewState::GetPathTracingSampleCount() const {
-	const FPathTracingState* State = PathTracingState.Get();
-	return State ? State->LastConfig.PathTracingData.MaxSamples : 0;
-}
-
 static void SplitDouble(double x, float* hi, float* lo)
 {
 	const double SPLIT = 134217729.0; // 2^27+1
@@ -2236,21 +1897,12 @@ static void SplitDouble(double x, float* hi, float* lo)
 	*lo = static_cast<float>(x - *hi);
 }
 
-#if WITH_MGPU
-BEGIN_SHADER_PARAMETER_STRUCT(FMGPUTransferParameters, )
-	RDG_TEXTURE_ACCESS(InputTexture, ERHIAccess::CopySrc)
-	RDG_TEXTURE_ACCESS(InputAlbedo, ERHIAccess::CopySrc)
-	RDG_TEXTURE_ACCESS(InputNormal, ERHIAccess::CopySrc)
-END_SHADER_PARAMETER_STRUCT()
-#endif
 
 DECLARE_GPU_STAT_NAMED(PathTracing, TEXT("Path Tracing"));
 DECLARE_GPU_STAT_NAMED(PathTracingPost, TEXT("Path Tracing Post"));
-#if WITH_MGPU
-DECLARE_GPU_STAT_NAMED(PathTracingCopy, TEXT("Path Tracing Copy"));
-#endif
 
-void RenderPathTracing(
+void MIGIRenderPathTracing(
+	const FScene * Scene,
 	FRDGBuilder& GraphBuilder,
 	const FViewInfo& View,
 	TRDGUniformBufferRef<FSceneTextureUniformParameters> SceneTexturesUniformBuffer,
@@ -2259,7 +1911,10 @@ void RenderPathTracing(
 	FPathTracingResources& PathTracingResources)
 {
 
-	auto R = FDeferredShadingSceneRenderer::Get();
+	// Get the current scene renderer.
+	FSceneRenderer* SceneRenderer = dynamic_cast<FSceneRenderer*>(View.Family->GetSceneRenderer());
+	check(SceneRenderer);
+
 	RDG_EVENT_SCOPE(GraphBuilder, "Path Tracing");
 
 	// To make the GPU profiler work for path tracing with multi-GPU, we need the root GPU profiling scope (marked as "Unaccounted") to be on all GPUs,
@@ -2267,7 +1922,7 @@ void RenderPathTracing(
 	// to "All" when path tracing is enabled, instead of "AllViewsGPUMask".  Then we'll enable that scope inside the path tracer instead.  We also
 	// subdivide the profiling scopes inside the path tracer, so the multi-GPU rendering and single-GPU post processing are separate scopes, instead of
 	// a scope for the whole path tracer (which would create the same problem).
-	RDG_GPU_MASK_SCOPE(GraphBuilder, AllViewsGPUMask);
+	RDG_GPU_MASK_SCOPE(GraphBuilder, FRHIGPUMask());//SceneRenderer->AllViewsGPUMask);
 
 	if (!ensureMsgf(FDataDrivenShaderPlatformInfo::GetSupportsPathTracing(View.GetShaderPlatform()),
 		TEXT("Attempting to use path tracing on unsupported platform.")))
@@ -2275,7 +1930,7 @@ void RenderPathTracing(
 		return;
 	}
 
-	if (CVarPathTracing.GetValueOnRenderThread() == 0)
+	if (CVarPathTracing->GetValueOnRenderThread() == 0)
 	{
 		// Path tracing is not enabled on this project (should not be seen by end-users since the menu entry to pick path tracing should be hidden)
 		// If they reach this code through ShowFlag manipulation, they may observe an incomplete image. Is there a way to inform the user here?
@@ -2286,11 +1941,11 @@ void RenderPathTracing(
 
 	// Get current value of MaxSPP and reset render if it has changed
 	// NOTE: we ignore the CVar when using offline rendering
-	int32 SamplesPerPixelCVar = View.bIsOfflineRender ? -1 : CVarPathTracingSamplesPerPixel.GetValueOnRenderThread();
+	int32 SamplesPerPixelCVar = View.bIsOfflineRender ? -1 : CVarPathTracingSamplesPerPixel->GetValueOnRenderThread();
 	uint32 MaxSPP = SamplesPerPixelCVar > -1 ? SamplesPerPixelCVar : View.FinalPostProcessSettings.PathTracingSamplesPerPixel;
 	MaxSPP = FMath::Max(MaxSPP, 1u);
-	Config.LockedSamplingPattern = CVarPathTracingFrameIndependentTemporalSeed.GetValueOnRenderThread() == 0;
-	Config.UseCameraMediumTracking = CVarPathTracingCameraMediumTracking.GetValueOnRenderThread() != 0;
+	Config.LockedSamplingPattern = CVarPathTracingFrameIndependentTemporalSeed->GetValueOnRenderThread() == 0;
+	Config.UseCameraMediumTracking = CVarPathTracingCameraMediumTracking->GetValueOnRenderThread() != 0;
 
 	// compute an integer code of what show flags and booleans related to lights are currently enabled so we can detect changes
 	Config.LightShowFlags = 0;
@@ -2301,7 +1956,7 @@ void RenderPathTracing(
 	Config.LightShowFlags |= View.Family->EngineShowFlags.PointLights           ? 1 << 4 : 0;
 	Config.LightShowFlags |= View.Family->EngineShowFlags.TexturedLightProfiles ? 1 << 5 : 0;
 	Config.LightShowFlags |= View.Family->EngineShowFlags.LightFunctions        ? 1 << 6 : 0;
-	Config.LightShowFlags |= CVarPathTracingLightFunctionColor.GetValueOnRenderThread() ? 1 << 7 : 0;
+	Config.LightShowFlags |= CVarPathTracingLightFunctionColor->GetValueOnRenderThread() ? 1 << 7 : 0;
 	// the following flags all mess with diffuse/spec overrides and therefore change the image
 	Config.LightShowFlags |= View.Family->EngineShowFlags.Diffuse                    ? 1 << 8 : 0;
 	Config.LightShowFlags |= View.Family->EngineShowFlags.Specular                   ? 1 << 9 : 0;
@@ -2310,51 +1965,55 @@ void RenderPathTracing(
 	Config.LightShowFlags |= View.Family->EngineShowFlags.ReflectionOverride         ? 1 << 12 : 0;
 	Config.LightShowFlags |= View.Family->EngineShowFlags.SubsurfaceScattering       ? 1 << 13 : 0;
 	// the following affects which material shaders get used and therefore change the image
-	if (Strata::IsStrataEnabled() && CVarPathTracingSubstrateCompileSimplifiedMaterial.GetValueOnRenderThread() != 0)
+	if (Strata::IsStrataEnabled() && CVarPathTracingSubstrateCompileSimplifiedMaterial->GetValueOnRenderThread() != 0)
 	{
-		Config.LightShowFlags |= CVarPathTracingSubstrateUseSimplifiedMaterial.GetValueOnRenderThread() != 0 ? 1 << 14 : 0;
+		Config.LightShowFlags |= CVarPathTracingSubstrateUseSimplifiedMaterial->GetValueOnRenderThread() != 0 ? 1 << 14 : 0;
 	}
 
 	PreparePathTracingData(Scene, View, Config.PathTracingData);
 
-	Config.VisibleLights = CVarPathTracingVisibleLights.GetValueOnRenderThread() != 0;
-	Config.UseMISCompensation = Config.PathTracingData.MISMode == 2 && CVarPathTracingMISCompensation.GetValueOnRenderThread() != 0;
+	Config.VisibleLights = CVarPathTracingVisibleLights->GetValueOnRenderThread() != 0;
+	Config.UseMISCompensation = Config.PathTracingData.MISMode == 2 && CVarPathTracingMISCompensation->GetValueOnRenderThread() != 0;
 
 	Config.ViewRect = View.ViewRect;
 
-	Config.LightGridResolution = FMath::RoundUpToPowerOfTwo(CVarPathTracingLightGridResolution.GetValueOnRenderThread());
-	Config.LightGridMaxCount = FMath::Clamp(CVarPathTracingLightGridMaxCount.GetValueOnRenderThread(), 1, RAY_TRACING_LIGHT_COUNT_MAXIMUM);
+	Config.LightGridResolution = FMath::RoundUpToPowerOfTwo(CVarPathTracingLightGridResolution->GetValueOnRenderThread());
+	Config.LightGridMaxCount = FMath::Clamp(CVarPathTracingLightGridMaxCount->GetValueOnRenderThread(), 1, RAY_TRACING_LIGHT_COUNT_MAXIMUM);
 
 	Config.PathTracingData.MaxSamples = MaxSPP;
 
 	bool FirstTime = false;
-	if (!View.ViewState->PathTracingState.IsValid())
-	{
-		View.ViewState->PathTracingState = MakePimpl<FPathTracingState>();
-		FirstTime = true; // we just initialized the option state for this view -- don't bother comparing in this case
+
+	if(!IsViewHasPathTracingState(View)) {
+		FirstTime = true;
 	}
-	check(View.ViewState->PathTracingState.IsValid());
-	FPathTracingState* PathTracingState = View.ViewState->PathTracingState.Get();
+	// if (!View.ViewState->PathTracingState.IsValid())
+	// {
+	// 	View.ViewState->PathTracingState = MakePimpl<FPathTracingState>();
+	// 	FirstTime = true; // we just initialized the option state for this view -- don't bother comparing in this case
+	// }
+	// check(View.ViewState->PathTracingState.IsValid());
+	FPathTracingState* PathTracingState = GetViewPathTracingState(View);//View.ViewState->PathTracingState.Get();
 
 	if (FirstTime || Config.UseMISCompensation != PathTracingState->LastConfig.UseMISCompensation)
 	{
 		// if the mode changes we need to rebuild the importance table
-		Scene->PathTracingSkylightTexture.SafeRelease();
-		Scene->PathTracingSkylightPdf.SafeRelease();
+		GSceneSkylightTexture.SafeRelease();
+		GSceneSkylightPdf.SafeRelease();
 	}
 
 	// if the skylight has changed colors, reset both the path tracer and the importance tables
-	if (Scene->SkyLight && Scene->SkyLight->GetEffectiveLightColor() != Scene->PathTracingSkylightColor)
+	if (Scene->SkyLight && Scene->SkyLight->GetEffectiveLightColor() != GSceneSkylightColor)
 	{
-		Scene->PathTracingSkylightTexture.SafeRelease();
-		Scene->PathTracingSkylightPdf.SafeRelease();
+		GSceneSkylightTexture.SafeRelease();
+		GSceneSkylightTexture.SafeRelease();
 		// reset last color here as well in case we don't reach PrepareSkyLightTexture
-		Scene->PathTracingSkylightColor = Scene->SkyLight->GetEffectiveLightColor();
+		GSceneSkylightColor = Scene->SkyLight->GetEffectiveLightColor();
 		if (!View.bIsOfflineRender)
 		{
 			// reset accumulation, unless this is an offline render, in which case it is ok for the color to evolve
 			// across temporal samples
-			View.ViewState->PathTracingInvalidate();
+			PathTracingInvalidate(View);
 		}
 		
 	}
@@ -2453,11 +2112,10 @@ void RenderPathTracing(
 	{
 		AtmosphereOpticalDepthLUT = GraphBuilder.RegisterExternalTexture(GSystemTextures.BlackDummy);
 	}
-#if WITH_MGPU
-	Config.UseMultiGPU = CVarPathTracingMultiGPU.GetValueOnRenderThread() != 0;
-#else
+
+	// Don't consider MGPU at all.
 	Config.UseMultiGPU = false;
-#endif
+
 
 	// If the scene has changed in some way (camera move, object movement, etc ...)
 	// we must invalidate the ViewState to start over from scratch
@@ -2470,20 +2128,21 @@ void RenderPathTracing(
 	{
 		// remember the options we used for next time
 		PathTracingState->LastConfig = Config;
-		View.ViewState->PathTracingInvalidate();
+		PathTracingInvalidate(View);
 	}
 
-
+	auto & SceneRendererViews = SceneRenderer->Views;
+	
 	TRDGUniformBufferRef<FOrthoVoxelGridUniformBufferParameters> OrthoGridUniformBuffer;
 	TRDGUniformBufferRef<FFrustumVoxelGridUniformBufferParameters> FrustumGridUniformBuffer;
-	bool bForceRebuild = CVarPathTracingHeterogeneousVolumesRebuildEveryFrame.GetValueOnRenderThread() != 0;
+	bool bForceRebuild = CVarPathTracingHeterogeneousVolumesRebuildEveryFrame->GetValueOnRenderThread() != 0;
 	bool bCreateVolumeGrids = bForceRebuild ||
 		!PathTracingState->AdaptiveFrustumGridParameterCache.TopLevelGridBuffer ||
 		!PathTracingState->AdaptiveOrthoGridParameterCache.TopLevelGridBuffer;
 	if (bCreateVolumeGrids)
 	{
-		BuildOrthoVoxelGrid(GraphBuilder, Scene, Views, OrthoGridUniformBuffer);
-		BuildFrustumVoxelGrid(GraphBuilder, Scene, Views[0], FrustumGridUniformBuffer);
+		BuildOrthoVoxelGrid(GraphBuilder, Scene, SceneRendererViews, OrthoGridUniformBuffer);
+		BuildFrustumVoxelGrid(GraphBuilder, Scene, SceneRendererViews[0], FrustumGridUniformBuffer);
 	}
 	else
 	{
@@ -2527,15 +2186,14 @@ void RenderPathTracing(
 	const int32 NumGPUs = GPUMask.GetNumActive();
 	const int32 DispatchResX = View.ViewRect.Size().X;
 	const int32 DispatchResY = View.ViewRect.Size().Y;
-	const int32 DispatchSize = FMath::Max(CVarPathTracingDispatchSize.GetValueOnRenderThread(), 64);
+	const int32 DispatchSize = FMath::Max(CVarPathTracingDispatchSize->GetValueOnRenderThread(), 64);
 
 	// When running with multiple GPUs, do that number of passes per frame, to keep the GPU work done per frame consistent
 	// (given that each GPU processes a fraction of the pixels), but get the job done in fewer frames.
-#if WITH_MGPU
-	const int32 FramePassCount = !View.bIsOfflineRender && CVarPathTracingAdjustMultiGPUPasses.GetValueOnRenderThread() ? NumGPUs : 1;
-#else
+
+	// NO support for multi-GPU yet
+
 	const int32 FramePassCount = 1;
-#endif
 
 	bool bNeedsMoreRays = false;
 	bool bNeedsTextureExtract = false;
@@ -2564,9 +2222,9 @@ void RenderPathTracing(
 			bNeedsTextureExtract = true;
 
 			// should we use path compaction?
-			const int CompactionType = CVarPathTracingCompaction.GetValueOnRenderThread();
-			const bool bUseIndirectDispatch = GRHISupportsRayTracingDispatchIndirect && CVarPathTracingIndirectDispatch.GetValueOnRenderThread() != 0;
-			const int FlushRenderingCommands = CVarPathTracingFlushDispatch.GetValueOnRenderThread();
+			const int CompactionType = CVarPathTracingCompaction->GetValueOnRenderThread();
+			const bool bUseIndirectDispatch = GRHISupportsRayTracingDispatchIndirect && CVarPathTracingIndirectDispatch->GetValueOnRenderThread() != 0;
+			const int FlushRenderingCommands = CVarPathTracingFlushDispatch->GetValueOnRenderThread();
 
 			FRDGBuffer* ActivePaths[2] = {};
 			FRDGBuffer* NumActivePaths[2] = {};
@@ -2875,7 +2533,7 @@ void RenderPathTracing(
 	FPathTracingCompositorPS::FParameters* DisplayParameters = GraphBuilder.AllocParameters<FPathTracingCompositorPS::FParameters>();
 	DisplayParameters->Iteration = Config.PathTracingData.Iteration;
 	DisplayParameters->MaxSamples = MaxSPP;
-	DisplayParameters->ProgressDisplayEnabled = CVarPathTracingProgressDisplay.GetValueOnRenderThread();
+	DisplayParameters->ProgressDisplayEnabled = CVarPathTracingProgressDisplay->GetValueOnRenderThread();
 	DisplayParameters->ViewUniformBuffer = View.ViewUniformBuffer;
 	DisplayParameters->RadianceTexture = GraphBuilder.CreateSRV(FRDGTextureSRVDesc::Create(DenoisedRadianceTexture ? DenoisedRadianceTexture : RadianceTexture));
 	DisplayParameters->NormalDepthTexture = GraphBuilder.CreateSRV(FRDGTextureSRVDesc::Create(NormalTexture));
@@ -2887,7 +2545,7 @@ void RenderPathTracing(
 	const bool IsCursorInsideView = View.CursorPos.X != -1 || View.CursorPos.Y != -1;
 	// wiper mode - reveals the render below the path tracing display
 	// NOTE: we still path trace the full resolution even while wiping the cursor so that rendering does not get out of sync
-	if (CVarPathTracingWiperMode.GetValueOnRenderThread() != 0)
+	if (CVarPathTracingWiperMode->GetValueOnRenderThread() != 0)
 	{
 		float DPIScale = FPlatformApplicationMisc::GetDPIScaleFactorAtPoint(View.CursorPos.X, View.CursorPos.Y);
 		
@@ -2906,7 +2564,7 @@ void RenderPathTracing(
 	FRHIBlendState* BlendState = FScreenPassPipelineState::FDefaultBlendState::GetRHI();
 	FRHIDepthStencilState* DepthStencilState = nullptr;
 
-	if (CVarpathTracingOverrideDepth.GetValueOnRenderThread() != 0)
+	if (CVarpathTracingOverrideDepth->GetValueOnRenderThread() != 0)
 	{
 		DepthStencilState = TStaticDepthStencilState<true, CF_Always>::GetRHI();
 	}
@@ -2928,7 +2586,7 @@ void RenderPathTracing(
 		DisplayParameters);
 
 	// Setup the path tracing resources to be used by post process pass.
-	if (CVarPathTracingOutputPostProcessResources.GetValueOnRenderThread() != 0)
+	if (CVarPathTracingOutputPostProcessResources->GetValueOnRenderThread() != 0)
 	{
 		PathTracingResources.bPostProcessEnabled = true;
 		PathTracingResources.DenoisedRadiance = DenoisedRadianceTexture ? DenoisedRadianceTexture : RadianceTexture;
@@ -2945,7 +2603,7 @@ void RenderPathTracing(
 		Inputs.SceneColor =SceneColorOutputTexture;
 
 		FScreenPassTextureViewport MotionVectorViewport(SceneColorOutputTexture, View.ViewRect);
-		if (CVarPathTracingWiperMode.GetValueOnRenderThread() != 0)
+		if (CVarPathTracingWiperMode->GetValueOnRenderThread() != 0)
 		{
 			float DPIScale = FPlatformApplicationMisc::GetDPIScaleFactorAtPoint(View.CursorPos.X, View.CursorPos.Y);
 			if (IsCursorInsideView)

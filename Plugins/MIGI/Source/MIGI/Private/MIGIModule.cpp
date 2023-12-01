@@ -8,8 +8,11 @@
 #include "MIGINNAdapter.h"
 
 #include "MIGIConstants.h"
+#include "MIGIPT.h"
 #include "MIGIViewExtension.h"
+#include "MIGIViewUniformBufferExtension.h"
 #include "RendererModule.h"
+#include "SceneViewExtension.h"
 
 
 #define LOCTEXT_NAMESPACE "MIGIModule"
@@ -42,11 +45,12 @@ bool FMIGIModule::ActivateMIGI()
 	
 	UE_LOG(MIGI, Display, TEXT("Activating..."));
 	// Register some delegates
-	DiffuseIndirectPrepareRayTracingDelegateHandle = FGlobalIlluminationPluginDelegates::PrepareRayTracing().AddStatic(&MIGIDiffuseIndirectPrepareRayTracing);
+	DiffuseIndirectPrepareRayTracingDelegateHandle = FGlobalIlluminationPluginDelegates::PrepareRayTracing().AddStatic(&MIGIPreparePathTracing);
 	DiffuseIndirectDelegateHandle = FGlobalIlluminationPluginDelegates::RenderDiffuseIndirectLight().AddStatic(&MIGIRenderDiffuseIndirect);
 	
 	// Register a persistent uniform buffer view extension
-	GetRendererModule().RegisterPersistentViewUniformBufferExtension(FMIGIViewExtension::Get());
+	GetRendererModule().RegisterPersistentViewUniformBufferExtension(FMIGIViewUniformBufferExtension::Get());
+	FMIGIViewExtension::Set(FSceneViewExtensions::NewExtension<FMIGIViewExtension>());
 
 	bModuleActive = true;
 	return true;

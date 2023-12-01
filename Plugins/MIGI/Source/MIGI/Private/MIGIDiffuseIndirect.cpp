@@ -11,9 +11,11 @@
 #include "MIGINNAdapter.h"
 #include "MIGINN.h"
 #include "MIGIConstants.h"
+#include "MIGIPT.h"
+#include "ScenePrivate.h"
 
 
-BEGIN_SHADER_PARAMETER_STRUCT(FMIGINNCommonShaderParameters, )
+BEGIN_SHADER_PARAMETER_STRUCT(FMIGINNCommonShaderParameters,)
 	SHADER_PARAMETER(FVector4f, TestParam)
 	SHADER_PARAMETER(unsigned, NNMaxInferenceSampleSize)
 	SHADER_PARAMETER(unsigned, NNTrainSampleSize)
@@ -147,6 +149,22 @@ void MIGIRenderDiffuseIndirect(const FScene& Scene, const FViewInfo& ViewInfo, F
 	// The adapter is not ready for some reason (reloading, etc). Render nothing.
 	if(!Adapter->IsReady()) return;
 
+
+	// Let's check if the path tracing rendering works.
+
+	// RenderPathTracing(GraphBuilder, View, SceneTextures.UniformBuffer, SceneTextures.Color.Target, SceneTextures.Depth.Target,PathTracingResources);
+	FSceneRenderer * SceneRenderer = dynamic_cast<FDeferredShadingSceneRenderer*>(ViewInfo.Family->GetSceneRenderer());
+
+	// MIGI only supports the deferred render path.
+	check(SceneRenderer);
+	
+	MIGIRenderPathTracing(
+		&Scene, GraphBuilder, ViewInfo, SceneRenderer->SceneTextures.UniformBuffer,
+		RenderResources.SceneColor, RenderResources.SceneDepth, RenderResources.PathTracingResources
+		
+	);
+
+	return ;
 	
 	// This function is running on the rendering thread, so it's okay to create FRDGBuffers outside of passes.
 	// Register NN external buffers.
